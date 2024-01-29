@@ -803,6 +803,12 @@ SSL *ossl_ssl_connection_new_int(SSL_CTX *ctx, const SSL_METHOD *method)
     if (s->cert == NULL)
         goto sslerr;
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+    s->vc = ssl_vc_dup(ctx->vc);
+    if (s->vc == NULL)
+        goto sslerr;
+#endif
+
     RECORD_LAYER_set_read_ahead(&s->rlayer, ctx->read_ahead);
     s->msg_callback = ctx->msg_callback;
     s->msg_callback_arg = ctx->msg_callback_arg;
@@ -865,6 +871,20 @@ SSL *ossl_ssl_connection_new_int(SSL_CTX *ctx, const SSL_METHOD *method)
         }
         s->ext.supportedgroups_len = ctx->ext.supportedgroups_len;
     }
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if (ctx->ext.didmethods) {
+        s->ext.didmethods =
+            OPENSSL_memdup(ctx->ext.didmethods,
+                           ctx->ext.didmethods_len
+                                * sizeof(*ctx->ext.didmethods));
+        if (!s->ext.didmethods) {
+            s->ext.didmethods_len = 0;
+            goto err;
+        }
+        s->ext.didmethods_len = ctx->ext.didmethods_len;
+    }
+#endif
 
 #ifndef OPENSSL_NO_NEXTPROTONEG
     s->ext.npn = NULL;
@@ -3953,6 +3973,12 @@ SSL_CTX *SSL_CTX_new_ex(OSSL_LIB_CTX *libctx, const char *propq,
         goto err;
     }
 
+    /* initialise did methods */
+    if(!ssl_setup_didmethods(ret)) {
+        ERR_raise(ERR_LIB_SSL, ERR_R_SSL_LIB);
+        goto err;
+    }
+
     if (!SSL_CTX_set_ciphersuites(ret, OSSL_default_ciphersuites())) {
         ERR_raise(ERR_LIB_SSL, ERR_R_SSL_LIB);
         goto err;
@@ -3962,6 +3988,13 @@ SSL_CTX *SSL_CTX_new_ex(OSSL_LIB_CTX *libctx, const char *propq,
         ERR_raise(ERR_LIB_SSL, ERR_R_SSL_LIB);
         goto err;
     }
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if ((ret->vc = ssl_vc_new(SSL_PKEY_NUM + ret->sigalg_list_len)) == NULL) {
+        ERR_raise(ERR_LIB_SSL, ERR_R_SSL_LIB);
+        goto err;
+    }
+#endif
 
     if (!ssl_create_cipher_list(ret,
                                 ret->tls13_ciphersuites,
@@ -7709,6 +7742,9 @@ static int validate_cert_type(const unsigned char *val, size_t len)
     size_t i;
     int saw_rpk = 0;
     int saw_x509 = 0;
+#ifndef OPENSSL_NO_VCAUTHTLS
+    int saw_vc = 0;
+#endif
 
     if (val == NULL && len == 0)
         return 1;
@@ -7728,6 +7764,13 @@ static int validate_cert_type(const unsigned char *val, size_t len)
                 return 0;
             saw_x509 = 1;
             break;
+#ifndef OPENSSL_NO_VCAUTHTLS
+        case TLSEXT_cert_type_vc:
+            if(saw_vc)
+                return 0;
+            saw_vc =1;
+            break;
+#endif
         case TLSEXT_cert_type_pgp:
         case TLSEXT_cert_type_1609dot2:
         default:

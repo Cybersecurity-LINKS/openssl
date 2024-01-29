@@ -329,6 +329,17 @@ static const EXTENSION_DEFINITION ext_defs[] = {
         tls_construct_stoc_server_cert_type, tls_construct_ctos_server_cert_type,
         NULL
     },
+#ifndef OPENSSL_NO_VCAUTHTLS
+    {   
+        /* Must be after server_cert_type */
+        TLSEXT_TYPE_did_methods,
+        SSL_EXT_CLIENT_HELLO | SSL_EXT_TLS1_3_CERTIFICATE_REQUEST
+        | SSL_EXT_TLS1_3_ONLY,
+        NULL, tls_parse_ctos_did_methods, tls_parse_ctos_did_methods, tls_construct_stoc_did_methods, tls_construct_ctos_did_methods, NULL
+    },
+#else
+    INVALID_EXTENSION,
+#endif
     {
         TLSEXT_TYPE_signature_algorithms,
         SSL_EXT_CLIENT_HELLO | SSL_EXT_TLS1_3_CERTIFICATE_REQUEST,

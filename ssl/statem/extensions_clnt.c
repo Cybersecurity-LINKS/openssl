@@ -2135,3 +2135,25 @@ int tls_parse_stoc_server_cert_type(SSL_CONNECTION *sc, PACKET *pkt,
     sc->ext.server_cert_type = type;
     return 1;
 }
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+EXT_RETURN tls_construct_ctos_did_methods(SSL_CONNECTION *sc, WPACKET *pkt,
+                                               unsigned int context,
+                                               X509 *x, size_t chainidx) 
+{
+    if(sc->ext.didmethods == NULL)
+        return EXT_RETURN_NOT_SENT;
+
+    if(!WPACKET_put_bytes_u16(pkt, TLSEXT_TYPE_did_methods)
+            || !WPACKET_start_sub_packet_u16(pkt)
+            /* || !WPACKET_start_sub_packet_u16(pkt) */
+            || !WPACKET_sub_memcpy_u16(pkt, sc->ext.didmethods, sc->ext.didmethods_len*2)
+            || !WPACKET_close(pkt)
+            /* || !WPACKET_close(pkt) */) {
+        SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        return EXT_RETURN_FAIL;
+    }
+
+    return EXT_RETURN_SENT;
+}
+#endif

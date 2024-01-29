@@ -21,6 +21,7 @@
 #include <openssl/x509.h>
 #include <openssl/trace.h>
 #include <openssl/encoder.h>
+#include <openssl/decoder.h>
 
 /*
  * Map error codes to TLS/SSL alart types.
@@ -326,11 +327,24 @@ CON_FUNC_RETURN tls_construct_cert_verify(SSL_CONNECTION *s, WPACKET *pkt)
     const SIGALG_LOOKUP *lu = s->s3.tmp.sigalg;
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
 
-    if (lu == NULL || s->s3.tmp.cert == NULL) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        goto err;
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if(s->ext.server_cert_type == TLSEXT_cert_type_vc) {
+        if (lu == NULL || s->s3.tmp.vc == NULL) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+        pkey = s->s3.tmp.vc->did;
     }
-    pkey = s->s3.tmp.cert->privatekey;
+    else if (s->ext.server_cert_type == TLSEXT_cert_type_rpk || s->ext.server_cert_type == TLSEXT_cert_type_x509) {
+#endif
+        if (lu == NULL || s->s3.tmp.cert == NULL) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+        pkey = s->s3.tmp.cert->privatekey;
+#ifndef OPENSSL_NO_VCAUTHTLS
+    }
+#endif
 
     if (pkey == NULL || !tls1_lookup_md(sctx, lu, &md)) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
@@ -468,9 +482,9 @@ MSG_PROCESS_RETURN tls_process_cert_verify(SSL_CONNECTION *s, PACKET *pkt)
     }
 
     if (ssl_cert_lookup_by_pkey(pkey, NULL, sctx) == NULL) {
-        SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER,
+        /* SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER,
                  SSL_R_SIGNATURE_FOR_NON_SIGNING_CERTIFICATE);
-        goto err;
+        goto err; */
     }
 
     if (SSL_USE_SIGALGS(s)) {
@@ -1101,13 +1115,164 @@ static int ssl_add_cert_chain(SSL_CONNECTION *s, WPACKET *pkt, CERT_PKEY *cpk, i
 }
 
 EVP_PKEY* tls_get_peer_pkey(const SSL_CONNECTION *sc)
-{
+{   
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if(sc->session->peer_vc != NULL)
+        return sc->session->peer_vc;
+#endif
     if (sc->session->peer_rpk != NULL)
         return sc->session->peer_rpk;
     if (sc->session->peer != NULL)
         return X509_get0_pubkey(sc->session->peer);
     return NULL;
 }
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+int tls_process_vc(SSL_CONNECTION *sc, PACKET *pkt, EVP_PKEY **peer_rpk)
+{   
+    EVP_PKEY *pkey = NULL;
+    int ret = 0;
+    RAW_EXTENSION *rawexts = NULL;
+    PACKET extensions;
+    PACKET context;
+    unsigned long cert_len = 0, spki_len = 0;
+    const unsigned char *spki, *spkistart;
+    SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(sc);
+
+    if (SSL_CONNECTION_IS_TLS13(sc)) {
+        if (!PACKET_get_length_prefixed_1(pkt, &context)) {
+            SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_INVALID_CONTEXT);
+            goto err;
+        }
+        if (sc->server) {
+            if (sc->pha_context == NULL) {
+                if (PACKET_remaining(&context) != 0) {
+                    SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_INVALID_CONTEXT);
+                    goto err;
+                }
+            } else {
+                if (!PACKET_equal(&context, sc->pha_context, sc->pha_context_len)) {
+                    SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_INVALID_CONTEXT);
+                    goto err;
+                }
+            }
+        } else {
+            if (PACKET_remaining(&context) != 0) {
+                SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_INVALID_CONTEXT);
+                goto err;
+            }
+        }
+    }
+
+    if (!PACKET_get_net_3(pkt, &cert_len)
+        || PACKET_remaining(pkt) != cert_len) {
+        SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
+        goto err;
+    }
+
+    /*
+     * The list length may be zero when there is no RPK.  In the case of TLS
+     * 1.2 this is actually the RPK length, which cannot be zero as specified,
+     * but that breaks the ability of the client to decline client auth. We
+     * overload the 0 RPK length to mean "no RPK".  This interpretation is
+     * also used some other (reference?) implementations, but is not supported
+     * by the verbatim RFC7250 text.
+     */
+    if (cert_len == 0)
+        return 1;
+
+    if (SSL_CONNECTION_IS_TLS13(sc)) {
+        /*
+         * With TLS 1.3, a non-empty explicit-length RPK octet-string followed
+         * by a possibly empty extension block.
+         */
+        if (!PACKET_get_net_3(pkt, &spki_len)) {
+            SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
+            goto err;
+        }
+        if (spki_len == 0) {
+            /* empty RPK */
+            SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_EMPTY_RAW_PUBLIC_KEY);
+            goto err;
+        }
+    } else {
+        spki_len = cert_len;
+    }
+
+    if (!PACKET_get_bytes(pkt, &spki, spki_len)) {
+        SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
+        goto err;
+    }
+    /* spkistart = spki;
+    if ((pkey = d2i_PUBKEY_ex(NULL, &spki, spki_len, sctx->libctx, sctx->propq)) == NULL
+            || spki != (spkistart + spki_len)) {
+        SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
+        goto err;
+    } */
+    OSSL_DECODER_CTX *ctx = OSSL_DECODER_CTX_new_for_pkey(&pkey, 
+                        "DER", "SubjectPublicKeyInfo", NULL, EVP_PKEY_PUBLIC_KEY, sctx->libctx, sctx->propq);
+    if(ctx == NULL){
+        //WRITE ERROR
+        goto err;
+    }
+    if(!OSSL_DECODER_from_data(ctx, &spki, &spki_len))
+        goto err; 
+
+    //oppure
+    //EVP_PKEY *d2i_PublicKey(int type, EVP_PKEY **a, const unsigned char **pp, long length);
+
+    // EVP_PKEY_CTX *pkey_ctx = EVP_PKEY_CTX_new_from_pkey(sctx->libctx, pkey, sctx->propq);
+    // if(pkey_ctx == NULL){
+    //     //WRITE ERROR
+    //     goto err;
+    // }
+    // if(!EVP_PKEY_check(pkey_ctx)) {
+    //     //WRTIE ERROR
+    //     goto err;
+    // }
+
+    if (EVP_PKEY_missing_parameters(pkey)) {
+        SSLfatal(sc, SSL_AD_INTERNAL_ERROR,
+                 SSL_R_UNABLE_TO_FIND_PUBLIC_KEY_PARAMETERS);
+        goto err;
+    }
+
+    /* Process the Extensions block */
+    // if (SSL_CONNECTION_IS_TLS13(sc)) {
+    //     if (PACKET_remaining(pkt) != (cert_len - 3 - spki_len)) {
+    //         SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_BAD_LENGTH);
+    //         goto err;
+    //     }
+    //     if (!PACKET_as_length_prefixed_2(pkt, &extensions)
+    //             || PACKET_remaining(pkt) != 0) {
+    //         SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
+    //         goto err;
+    //     }
+    //     if (!tls_collect_extensions(sc, &extensions, SSL_EXT_TLS1_3_RAW_PUBLIC_KEY,
+    //                                 &rawexts, NULL, 1)) {
+    //         /* SSLfatal already called */
+    //         goto err;
+    //     }
+    //     /* chain index is always zero and fin always 1 for RPK */
+    //     if (!tls_parse_all_extensions(sc, SSL_EXT_TLS1_3_RAW_PUBLIC_KEY,
+    //                                   rawexts, NULL, 0, 1)) {
+    //         /* SSLfatal already called */
+    //         goto err;
+    //     }
+    // }
+    ret = 1;
+    if (peer_rpk != NULL) {
+        *peer_rpk = pkey;
+        pkey = NULL;
+    }
+
+ err:
+    OSSL_DECODER_CTX_free(ctx);
+    OPENSSL_free(rawexts);
+    EVP_PKEY_free(pkey);
+    return ret;
+}
+#endif
 
 int tls_process_rpk(SSL_CONNECTION *sc, PACKET *pkt, EVP_PKEY **peer_rpk)
 {
@@ -1384,6 +1549,71 @@ unsigned long tls_output_rpk(SSL_CONNECTION *sc, WPACKET *pkt, CERT_PKEY *cpk)
     OPENSSL_free(pdata);
     return ret;
 }
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+unsigned long tls_output_vc(SSL_CONNECTION *sc, WPACKET *pkt,
+                                    VC_PKEY *vcpk) {
+
+    int pdata_len = 0;
+    unsigned char *pdata = NULL;
+    unsigned long ret = 0;
+    if (vcpk != NULL && vcpk->vc != NULL) {
+        /* Get the VC as the public key */
+        pdata_len = i2d_PUBKEY(vcpk->vc, &pdata);
+    } else {
+        /* The server VC is not optional */
+        if (sc->server) {
+            SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+        /* The client can send a zero length certificate list */
+        if (!WPACKET_sub_memcpy_u24(pkt, pdata, pdata_len)) {
+            SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+        return 1;
+    }
+    if (pdata_len <= 0) {
+        SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+    /*
+     * TLSv1.2 is _just_ the raw public key
+     * TLSv1.3 includes extensions, so there's a length wrapper
+     */
+    if (SSL_CONNECTION_IS_TLS13(sc)) {
+        if (!WPACKET_start_sub_packet_u24(pkt)) {
+            SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+    }
+    if (!WPACKET_sub_memcpy_u24(pkt, pdata, pdata_len)) {
+        SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+    // if (SSL_CONNECTION_IS_TLS13(sc)) {
+    //     /*
+    //      * Only send extensions relevant to raw public keys. Until such
+    //      * extensions are defined, this will be an empty set of extensions.
+    //      * |x509| may be NULL, which raw public-key extensions need to handle.
+    //      */
+    //     if (!tls_construct_extensions(sc, pkt, SSL_EXT_TLS1_3_RAW_PUBLIC_KEY,
+    //                                   x509, 0)) {
+    //         /* SSLfatal() already called */
+    //         goto err;
+    //     }
+        if (!WPACKET_close(pkt)) {
+            SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+    // }
+
+    ret = 1;
+ err:
+    OPENSSL_free(pdata);
+    return ret;
+}
+#endif
 
 unsigned long ssl3_output_cert_chain(SSL_CONNECTION *s, WPACKET *pkt,
                                      CERT_PKEY *cpk, int for_comp)
@@ -1918,6 +2148,11 @@ static int is_tls13_capable(const SSL_CONNECTION *s)
 
     if (s->psk_find_session_cb != NULL || s->cert->cert_cb != NULL)
         return 1;
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if(ssl_has_vc(s))
+        return 1;
+#endif
 
     /* All provider-based sig algs are required to support at least TLS1.3 */
     for (i = 0; i < s->ssl_pkey_num; i++) {

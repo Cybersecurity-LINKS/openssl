@@ -48,8 +48,12 @@ static CON_FUNC_RETURN tls_construct_encrypted_extensions(SSL_CONNECTION *s,
                                                           WPACKET *pkt);
 
 static ossl_inline int received_client_cert(const SSL_CONNECTION *sc)
-{
-    return sc->session->peer_rpk != NULL || sc->session->peer != NULL;
+{       
+    return 
+#ifndef OPENSSL_NO_VCAUTHTLS
+    sc->session->peer_vc != NULL ||
+#endif
+    sc->session->peer_rpk != NULL || sc->session->peer != NULL;
 }
 
 /*
@@ -2136,6 +2140,13 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
         }
     }
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if (!set_server_didmethods(s)) {
+        /* SSLfatal() already called */
+        goto err;
+    }
+#endif
+
     sk_SSL_CIPHER_free(ciphers);
     sk_SSL_CIPHER_free(scsvs);
     OPENSSL_free(clienthello->pre_proc_exts);
@@ -3526,6 +3537,89 @@ WORK_STATE tls_post_process_client_key_exchange(SSL_CONNECTION *s,
     return WORK_FINISHED_CONTINUE;
 }
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+MSG_PROCESS_RETURN tls_process_client_vc(SSL_CONNECTION *sc, PACKET *pkt)
+{
+    MSG_PROCESS_RETURN ret = MSG_PROCESS_ERROR;
+    SSL_SESSION *new_sess = NULL;
+    EVP_PKEY *peer_vc = NULL;
+
+    if (!tls_process_vc(sc, pkt, &peer_vc)) {
+        /* SSLfatal already called */
+        goto err;
+    }
+
+    if (peer_vc == NULL) {
+        if ((sc->verify_mode & SSL_VERIFY_FAIL_IF_NO_PEER_CERT)
+                && (sc->verify_mode & SSL_VERIFY_PEER)) {
+            SSLfatal(sc, SSL_AD_CERTIFICATE_REQUIRED,
+                     SSL_R_PEER_DID_NOT_RETURN_A_CERTIFICATE);
+            goto err;
+        }
+    } else {
+        /* if (ssl_verify_rpk(sc, peer_vc) <= 0) {
+            SSLfatal(sc, ssl_x509err2alert(sc->verify_result),
+                     SSL_R_CERTIFICATE_VERIFY_FAILED);
+            goto err;
+        } */
+    }
+
+    /*
+     * Sessions must be immutable once they go into the session cache. Otherwise
+     * we can get multi-thread problems. Therefore we don't "update" sessions,
+     * we replace them with a duplicate. Here, we need to do this every time
+     * a new VC (RPK or certificate) is received via post-handshake authentication,
+     * as the session may have already gone into the session cache.
+     */
+
+     if (sc->post_handshake_auth == SSL_PHA_REQUESTED) {
+        if ((new_sess = ssl_session_dup(sc->session, 0)) == NULL) {
+            SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_MALLOC_FAILURE);
+            goto err;
+        }
+
+        SSL_SESSION_free(sc->session);
+        sc->session = new_sess;
+    }
+
+    /* Save VC */
+    EVP_PKEY_free(sc->session->peer_vc);
+    sc->session->peer_vc = peer_vc;
+    peer_vc = NULL;
+
+    sc->session->verify_result = sc->verify_result;
+
+    /*
+     * Freeze the handshake buffer. For <TLS1.3 we do this after the CKE
+     * message
+     */
+    if (SSL_CONNECTION_IS_TLS13(sc)) {
+        if (!ssl3_digest_cached_records(sc, 1)) {
+            /* SSLfatal() already called */
+            goto err;
+        }
+
+        /* Save the current hash state for when we receive the CertificateVerify */
+        if (!ssl_handshake_hash(sc, sc->cert_verify_hash,
+                                sizeof(sc->cert_verify_hash),
+                                &sc->cert_verify_hash_len)) {
+            /* SSLfatal() already called */;
+            goto err;
+        }
+
+        /* resend session tickets */
+        sc->sent_tickets = 0;
+    }
+
+    ret = MSG_PROCESS_CONTINUE_READING;
+
+ err:
+    EVP_PKEY_free(peer_vc);
+    return ret;
+
+}
+#endif
+
 MSG_PROCESS_RETURN tls_process_client_rpk(SSL_CONNECTION *sc, PACKET *pkt)
 {
     MSG_PROCESS_RETURN ret = MSG_PROCESS_ERROR;
@@ -3631,6 +3725,11 @@ MSG_PROCESS_RETURN tls_process_client_certificate(SSL_CONNECTION *s,
      */
     if (s->rlayer.rrlmethod->set_plain_alerts != NULL)
         s->rlayer.rrlmethod->set_plain_alerts(s->rlayer.rrl, 0);
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if(s->ext.client_cert_type == TLSEXT_cert_type_vc)
+        return tls_process_client_vc(s, pkt);
+#endif
 
     if (s->ext.client_cert_type == TLSEXT_cert_type_rpk)
         return tls_process_client_rpk(s, pkt);
@@ -3829,8 +3928,15 @@ MSG_PROCESS_RETURN tls_process_client_compressed_certificate(SSL_CONNECTION *sc,
 CON_FUNC_RETURN tls_construct_server_certificate(SSL_CONNECTION *s, WPACKET *pkt)
 {
     CERT_PKEY *cpk = s->s3.tmp.cert;
+#ifndef OPENSSL_NO_VCAUTHTLS
+    VC_PKEY *vcpk = s->s3.tmp.vc;
+#endif
 
-    if (cpk == NULL) {
+        if (cpk == NULL 
+#ifndef OPENSSL_NO_VCAUTHTLS    
+    && vcpk == NULL
+#endif
+    ) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         return CON_FUNC_ERROR;
     }
@@ -3844,6 +3950,14 @@ CON_FUNC_RETURN tls_construct_server_certificate(SSL_CONNECTION *s, WPACKET *pkt
         return CON_FUNC_ERROR;
     }
     switch (s->ext.server_cert_type) {
+#ifndef OPENSSL_NO_VCAUTHTLS 
+    case TLSEXT_cert_type_vc:
+        if (!tls_output_vc(s, pkt, vcpk)) {
+            /* SSLfatal() already called */
+            return 0;
+        }
+        break;
+#endif
     case TLSEXT_cert_type_rpk:
         if (!tls_output_rpk(s, pkt, cpk)) {
             /* SSLfatal() already called */

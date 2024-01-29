@@ -2109,3 +2109,66 @@ int tls_parse_ctos_server_cert_type(SSL_CONNECTION *sc, PACKET *pkt,
     SSLfatal(sc, SSL_AD_UNSUPPORTED_CERTIFICATE, SSL_R_BAD_EXTENSION);
     return 0;
 }
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+int tls_parse_ctos_did_methods(SSL_CONNECTION *sc, PACKET *pkt,
+                                    unsigned int context,
+                                    X509 *x, size_t chainidx)
+{   
+    PACKET did_methods;
+
+    if(!PACKET_as_length_prefixed_2(pkt, &did_methods)
+            || PACKET_remaining(&did_methods) == 0) {
+        SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_BAD_EXTENSION);
+        return 0;
+    }
+
+    OPENSSL_free(sc->ext.peer_didmethods);
+    sc->ext.peer_didmethods = NULL;
+    sc->ext.peer_didmethods_len = 0;
+    if (!tls1_save_u16(&did_methods, &sc->ext.peer_didmethods, 
+    &sc->ext.peer_didmethods_len)) {
+        SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return 0;
+    }
+
+    return 1;
+}
+#endif
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+EXT_RETURN tls_construct_stoc_did_methods (SSL_CONNECTION *sc, WPACKET *pkt,
+                                               unsigned int context,
+                                               X509 *x, size_t chainidx)
+{
+    const uint16_t *didmethods;
+	size_t didmethodslen;
+
+    if(sc->ext.client_cert_type != TLSEXT_cert_type_vc 
+        || sc->ext.didmethods == NULL)
+        return EXT_RETURN_NOT_SENT;
+
+    if (sc->shared_didmethods != NULL)
+	{
+		didmethods = sc->shared_didmethods;
+		didmethodslen = sc->shared_didmethodslen;
+	}
+	else
+	{
+		didmethods = sc->ext.didmethods;
+		didmethodslen = sc->ext.didmethods_len;
+	}
+
+    if(!WPACKET_put_bytes_u16(pkt, TLSEXT_TYPE_did_methods)
+            || !WPACKET_start_sub_packet_u16(pkt)
+            /* || !WPACKET_start_sub_packet_u16(pkt) */
+            || !WPACKET_sub_memcpy_u16(pkt, didmethods, didmethodslen*2)
+            /* || !WPACKET_close(pkt) */
+            || !WPACKET_close(pkt)) {
+        SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        return EXT_RETURN_FAIL;
+    }
+
+    return EXT_RETURN_SENT;
+}
+#endif

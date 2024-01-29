@@ -570,3 +570,21 @@ int tls_parse_ctos_server_cert_type(SSL_CONNECTION *sc, PACKET *pkt,
 int tls_parse_stoc_server_cert_type(SSL_CONNECTION *s, PACKET *pkt,
                                     unsigned int context,
                                     X509 *x, size_t chainidx);
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+__owur unsigned long tls_output_vc(SSL_CONNECTION *sc, WPACKET *pkt,
+                                    VC_PKEY *vcpk);
+__owur MSG_PROCESS_RETURN tls_process_server_vc(SSL_CONNECTION *sc,
+                                                 PACKET *pkt);
+__owur MSG_PROCESS_RETURN tls_process_client_vc(SSL_CONNECTION *sc, PACKET *pkt);
+__owur int tls_process_vc(SSL_CONNECTION *sc, PACKET *pkt, EVP_PKEY **peer_vc);
+__owur EXT_RETURN tls_construct_ctos_did_methods(SSL_CONNECTION *sc, WPACKET *pkt,
+                                               unsigned int context,
+                                               X509 *x, size_t chainidx);
+__owur int tls_parse_ctos_did_methods(SSL_CONNECTION *sc, PACKET *pkt,
+                                    unsigned int context,
+                                    X509 *x, size_t chainidx);
+__owur EXT_RETURN tls_construct_stoc_did_methods (SSL_CONNECTION *sc, WPACKET *pkt,
+                                    unsigned int context,
+                                    X509 *x, size_t chainidx);
+#endif

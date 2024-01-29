@@ -1883,6 +1883,28 @@ static MSG_PROCESS_RETURN tls_process_as_hello_retry_request(SSL_CONNECTION *s,
     return MSG_PROCESS_ERROR;
 }
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+MSG_PROCESS_RETURN tls_process_server_vc(SSL_CONNECTION *sc, PACKET *pkt)
+{       
+    EVP_PKEY *peer_vc;
+
+    if(!tls_process_vc(sc, pkt, &peer_vc)) {
+        /* SSLfatal() already called */
+        return MSG_PROCESS_ERROR;
+    }
+
+    if (peer_vc == NULL) {
+        SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_BAD_CERTIFICATE);
+        return MSG_PROCESS_ERROR;
+    }
+
+    EVP_PKEY_free(sc->session->peer_vc);
+    sc->session->peer_vc = peer_vc;
+
+    return MSG_PROCESS_CONTINUE_READING;
+}
+#endif
+
 MSG_PROCESS_RETURN tls_process_server_rpk(SSL_CONNECTION *sc, PACKET *pkt)
 {
     EVP_PKEY *peer_rpk;
@@ -1969,6 +1991,10 @@ MSG_PROCESS_RETURN tls_process_server_certificate(SSL_CONNECTION *s,
     unsigned int context = 0;
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if (s->ext.server_cert_type == TLSEXT_cert_type_vc)
+        return tls_process_server_vc(s, pkt);
+#endif
     if (s->ext.server_cert_type == TLSEXT_cert_type_rpk)
         return tls_process_server_rpk(s, pkt);
     if (s->ext.server_cert_type != TLSEXT_cert_type_x509) {
@@ -2613,6 +2639,12 @@ MSG_PROCESS_RETURN tls_process_certificate_request(SSL_CONNECTION *s,
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_BAD_LENGTH);
             return MSG_PROCESS_ERROR;
         }
+#ifndef OPENSSL_NO_VCAUTHTLS
+        if (!process_didmethods(s)) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_BAD_LENGTH);
+            return MSG_PROCESS_ERROR;
+        }
+#endif
     } else {
         PACKET ctypes;
 
@@ -3753,7 +3785,10 @@ WORK_STATE tls_prepare_client_certificate(SSL_CONNECTION *s, WORK_STATE wst)
 
 CON_FUNC_RETURN tls_construct_client_certificate(SSL_CONNECTION *s,
                                                  WPACKET *pkt)
-{
+{   
+#ifndef OPENSSL_NO_VCAUTHTLS
+    VC_PKEY *vcpk = NULL;
+#endif
     CERT_PKEY *cpk = NULL;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
 
@@ -3769,9 +3804,21 @@ CON_FUNC_RETURN tls_construct_client_certificate(SSL_CONNECTION *s,
             return CON_FUNC_ERROR;
         }
     }
-    if (s->s3.tmp.cert_req != 2)
+    if (s->s3.tmp.cert_req != 2) {
+#ifndef OPENSSL_NO_VCAUTHTLS
+        vcpk = s->vc;
+#endif
         cpk = s->cert->key;
+    }
     switch (s->ext.client_cert_type) {
+#ifndef OPENSSL_NO_VCAUTHTLS
+    case TLSEXT_cert_type_vc:
+        if (!tls_output_vc(s, pkt, vcpk)) {
+            /* SSLfatal() already called */
+            return CON_FUNC_ERROR;
+        }
+        break;
+#endif
     case TLSEXT_cert_type_rpk:
         if (!tls_output_rpk(s, pkt, cpk)) {
             /* SSLfatal() already called */

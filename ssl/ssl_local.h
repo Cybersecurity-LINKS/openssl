@@ -521,6 +521,10 @@ struct ssl_session_st {
      * to disable session caching and tickets.
      */
     int not_resumable;
+#ifndef OPENSSL_NO_VCAUTHTLS
+    /* Peer VC, if available */
+    EVP_PKEY *peer_vc;
+#endif
     /* Peer raw public key, if available */
     EVP_PKEY *peer_rpk;
     /* This is the cert and type for the other end. */
@@ -698,6 +702,7 @@ typedef enum tlsext_index_en {
     TLSEXT_IDX_post_handshake_auth,
     TLSEXT_IDX_client_cert_type,
     TLSEXT_IDX_server_cert_type,
+    TLSEXT_IDX_server_did_methods,
     TLSEXT_IDX_signature_algorithms,
     TLSEXT_IDX_supported_versions,
     TLSEXT_IDX_psk_kex_modes,
@@ -803,6 +808,10 @@ typedef struct {
 # define TLS_GROUP_ONLY_FOR_TLS1_3  0x00000010U
 
 # define TLS_GROUP_FFDHE_FOR_TLS1_3 (TLS_GROUP_FFDHE|TLS_GROUP_ONLY_FOR_TLS1_3)
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+typedef struct vc_pkey_st VC_PKEY;
+#endif
 
 struct ssl_ctx_st {
     OSSL_LIB_CTX *libctx;
@@ -943,6 +952,10 @@ struct ssl_ctx_st {
     SSL_CERT_LOOKUP *ssl_cert_info;
     int read_ahead;
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+    VC_PKEY *vc;
+#endif
+
     /* callback that allows applications to peek at protocol messages */
     ossl_msg_cb msg_callback;
     void *msg_callback_arg;
@@ -1035,6 +1048,11 @@ struct ssl_ctx_st {
 
         uint16_t *supported_groups_default;
         size_t supported_groups_default_len;
+        
+#ifndef OPENSSL_NO_VCAUTHTLS
+        size_t didmethods_len;
+        uint16_t *didmethods;
+#endif
         /*
          * ALPN information (we are in the process of transitioning from NPN to
          * ALPN.)
@@ -1347,6 +1365,10 @@ struct ssl_connection_st {
             const struct sigalg_lookup_st *sigalg;
             /* Pointer to certificate we use */
             CERT_PKEY *cert;
+#ifndef OPENSSL_NO_VCAUTHTLS
+            /* Pointer to the VC we use */
+            VC_PKEY *vc;
+#endif
             /*
              * signature algorithms peer reports: e.g. supported signature
              * algorithms extension for server or as part of a certificate
@@ -1474,6 +1496,10 @@ struct ssl_connection_st {
     /* client cert? */
     /* This is used to hold the server certificate used */
     struct cert_st /* CERT */ *cert;
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+    struct vc_pkey_st *vc;
+#endif
 
     /*
      * The hash of all messages prior to the CertificateVerify, and the length
@@ -1609,6 +1635,16 @@ struct ssl_connection_st {
         size_t peer_supportedgroups_len;
          /* peer's list */
         uint16_t *peer_supportedgroups;
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+        size_t didmethods_len;
+        /* our list */
+        uint16_t *didmethods;
+
+        size_t peer_didmethods_len;
+         /* peer's list */
+        uint16_t *peer_didmethods;
+#endif
 
         /* TLS Session Ticket extension override */
         TLS_SESSION_TICKET_EXT *session_ticket;
@@ -1793,6 +1829,15 @@ struct ssl_connection_st {
      */
     const struct sigalg_lookup_st **shared_sigalgs;
     size_t shared_sigalgslen;
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+    /*
+     * DID methods shared by client and server: cached because these
+     * are used most often.
+     */
+    const uint16_t *shared_didmethods;
+    size_t shared_didmethodslen;
+#endif
 
 #ifndef OPENSSL_NO_COMP_ALG
     /* certificate compression preferences */
@@ -1997,6 +2042,12 @@ struct cert_pkey_st {
     int cert_comp_used;
 # endif
 };
+#ifndef OPENSSL_NO_VCAUTHTLS
+struct vc_pkey_st {
+	EVP_PKEY *vc;
+	EVP_PKEY *did;
+};
+#endif
 /* Retrieve Suite B flags */
 # define tls1_suiteb(s)  (s->cert->cert_flags & SSL_CERT_FLAG_SUITEB_128_LOS)
 /* Uses to check strict mode: suite B modes are always strict */
@@ -2177,6 +2228,13 @@ typedef enum downgrade_en {
  * set
  */
 #define TLSEXT_STATUSTYPE_nothing  -1
+
+/* DID Methods values */
+#ifndef OPENSSL_NO_VCAUTHTLS
+#define TLSEXT_DIDMETH_btcr                                     0x0000
+#define TLSEXT_DIDMETH_ethr                                     0x0001
+#define TLSEXT_DIDMETH_iota                                     0x0002
+#endif
 
 /* Sigalgs values */
 #define TLSEXT_SIGALG_ecdsa_secp256r1_sha256                    0x0403
@@ -3063,4 +3121,13 @@ long ossl_ctrl_internal(SSL *s, int cmd, long larg, void *parg, int no_quic);
     (OSSL_QUIC_PERMITTED_OPTIONS_CONN |         \
      OSSL_QUIC_PERMITTED_OPTIONS_STREAM)
 
+#endif
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+__owur VC_PKEY *ssl_vc_new(size_t ssl_pkey_num);
+__owur VC_PKEY *ssl_vc_dup(VC_PKEY *vc);
+__owur int ssl_has_vc(const SSL_CONNECTION *s);
+__owur int ssl_setup_didmethods(SSL_CTX *ctx);
+__owur int set_server_didmethods(SSL_CONNECTION *s);
+__owur int process_didmethods(SSL_CONNECTION *s);
 #endif

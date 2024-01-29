@@ -118,6 +118,10 @@ static int is_dNS_name(const char *host);
 static const unsigned char cert_type_rpk[] = { TLSEXT_cert_type_rpk, TLSEXT_cert_type_x509 };
 static int enable_server_rpk = 0;
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+static const unsigned char cert_type_vc[] = { TLSEXT_cert_type_vc, TLSEXT_cert_type_x509 };
+#endif
+
 static int saved_errno;
 
 static void save_errno(void)
@@ -959,6 +963,11 @@ int s_client_main(int argc, char **argv)
     BIO_ADDR *peer_addr = NULL;
     struct user_data_st user_data;
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+    EVP_PKEY *vc = NULL;
+    EVP_PKEY *did = NULL;
+#endif
+
     FD_ZERO(&readfds);
     FD_ZERO(&writefds);
 /* Known false-positive of MemorySanitizer. */
@@ -1743,6 +1752,17 @@ int s_client_main(int argc, char **argv)
     if (key_file == NULL)
         key_file = cert_file;
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+    did = load_key(key_file, key_format, 0, pass, e,
+            "client DID document and private key" );
+        if (did == NULL)
+            goto end;
+
+    vc = load_key(cert_file, key_format, 0, pass, e,
+            "client VC" );
+    if (vc == NULL)
+            goto end;
+#else
     if (key_file != NULL) {
         key = load_key(key_file, key_format, 0, pass, e,
                        "client certificate private key");
@@ -1756,6 +1776,7 @@ int s_client_main(int argc, char **argv)
         if (cert == NULL)
             goto end;
     }
+#endif
 
     if (chain_file != NULL) {
         if (!load_certs(chain_file, 0, &chain, pass, "client certificate chain"))
@@ -2029,8 +2050,15 @@ int s_client_main(int argc, char **argv)
 
     ssl_ctx_add_crls(ctx, crls, crl_download);
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if(!set_vc_did_stuff(ctx, vc, did))
+        goto end;
+#else
     if (!set_cert_key_stuff(ctx, cert, key, chain, build_chain))
         goto end;
+#endif
+
+
 
     if (!noservername) {
         tlsextcbp.biodebug = bio_err;
@@ -2073,16 +2101,31 @@ int s_client_main(int argc, char **argv)
         SSL_set_post_handshake_auth(con, 1);
 
     if (enable_client_rpk)
+#ifndef OPENSSL_NO_VCAUTHTLS
+        if (!SSL_set1_client_cert_type(con, cert_type_vc, sizeof(cert_type_vc))) {
+            BIO_printf(bio_err, "Error setting client certificate types\n");
+            goto end;
+        }
+#else
         if (!SSL_set1_client_cert_type(con, cert_type_rpk, sizeof(cert_type_rpk))) {
             BIO_printf(bio_err, "Error setting client certificate types\n");
             goto end;
         }
     if (enable_server_rpk) {
+#endif
+    if (enable_server_rpk)
+#ifndef OPENSSL_NO_VCAUTHTLS
+        if (!SSL_set1_server_cert_type(con, cert_type_vc, sizeof(cert_type_vc))) {
+            BIO_printf(bio_err, "Error setting server certificate types\n");
+            goto end;
+        }
+#else
         if (!SSL_set1_server_cert_type(con, cert_type_rpk, sizeof(cert_type_rpk))) {
             BIO_printf(bio_err, "Error setting server certificate types\n");
             goto end;
         }
     }
+#endif
 
     if (sess_in != NULL) {
         SSL_SESSION *sess;
@@ -3353,6 +3396,10 @@ int s_client_main(int argc, char **argv)
     bio_c_out = NULL;
     BIO_free(bio_c_msg);
     bio_c_msg = NULL;
+#ifndef OPENSSL_NO_VCAUTHTLS
+    EVP_PKEY_free(vc);
+    EVP_PKEY_free(did);
+#endif
     return ret;
 }
 

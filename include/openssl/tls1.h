@@ -168,6 +168,10 @@ extern "C" {
 #  define TLSEXT_TYPE_next_proto_neg              13172
 # endif
 
+#ifndef OPENSSL_NO_VCAUTHTLS                    
+# define TLSEXT_TYPE_did_methods                 65282
+#endif
+
 /* NameType value from RFC3546 */
 # define TLSEXT_NAMETYPE_host_name 0
 /* status request value from RFC3546 */
@@ -240,6 +244,9 @@ extern "C" {
 # define TLSEXT_cert_type_pgp          1 /* recognized, but not supported */
 # define TLSEXT_cert_type_rpk          2
 # define TLSEXT_cert_type_1609dot2     3 /* recognized, but not supported */
+#ifndef OPENSSL_NO_VCAUTHTLS
+# define TLSEXT_cert_type_vc           224 
+#endif
 
 int SSL_CTX_set_tlsext_max_fragment_length(SSL_CTX *ctx, uint8_t mode);
 int SSL_set_tlsext_max_fragment_length(SSL *ssl, uint8_t mode);

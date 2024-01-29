@@ -112,3 +112,7 @@ int set_up_srp_verifier_file(SSL_CTX *ctx, srpsrvparm *srp_callback_parm,
                              char *srpuserseed, char *srp_verifier_file);
 void lookup_srp_user(srpsrvparm *srp_callback_parm, BIO *bio_s_out);
 #endif /* OPENSSL_NO_SRP */
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+int set_vc_did_stuff(SSL_CTX *ctx, EVP_PKEY *vc, EVP_PKEY *did);
+#endif

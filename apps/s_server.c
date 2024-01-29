@@ -103,6 +103,10 @@ static const char *session_id_prefix = NULL;
 static const unsigned char cert_type_rpk[] = { TLSEXT_cert_type_rpk, TLSEXT_cert_type_x509 };
 static int enable_client_rpk = 0;
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+static const unsigned char cert_type_vc[] = { TLSEXT_cert_type_vc, TLSEXT_cert_type_x509 };
+#endif
+
 #ifndef OPENSSL_NO_DTLS
 static int enable_timeouts = 0;
 static long socket_mtu;
@@ -1076,6 +1080,10 @@ int s_server_main(int argc, char *argv[])
     int tfo = 0;
     int cert_comp = 0;
     int enable_server_rpk = 0;
+#ifndef OPENSSL_NO_VCAUTHTLS
+    EVP_PKEY *vc = NULL;
+    EVP_PKEY *did = NULL;
+#endif
 
     /* Init of few remaining global variables */
     local_argc = argc;
@@ -1787,6 +1795,17 @@ int s_server_main(int argc, char *argv[])
         goto end;
 
     if (nocert == 0) {
+#ifndef OPENSSL_NO_VCAUTHTLS
+        did = load_key(s_key_file, s_key_format, 0, pass, engine,
+            "server DID document and private key" );
+        if (did == NULL)
+            goto end;
+
+        vc = load_key(s_cert_file, s_key_format, 0, pass, engine,
+            "server VC" );
+        if (vc == NULL)
+            goto end;
+#else
         s_key = load_key(s_key_file, s_key_format, 0, pass, engine,
                          "server certificate private key");
         if (s_key == NULL)
@@ -1815,6 +1834,7 @@ int s_server_main(int argc, char *argv[])
             if (s_cert2 == NULL)
                 goto end;
         }
+#endif
     }
 #if !defined(OPENSSL_NO_NEXTPROTONEG)
     if (next_proto_neg_in) {
@@ -2155,8 +2175,13 @@ int s_server_main(int argc, char *argv[])
         EVP_PKEY_free(dhpkey);
     }
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if(!set_vc_did_stuff(ctx, vc, did))
+        goto end;
+#else
     if (!set_cert_key_stuff(ctx, s_cert, s_key, s_chain, build_chain))
         goto end;
+#endif
 
     if (s_serverinfo_file != NULL
         && !SSL_CTX_use_serverinfo_file(ctx, s_serverinfo_file)) {
@@ -2293,15 +2318,29 @@ int s_server_main(int argc, char *argv[])
             BIO_printf(bio_s_out, "Error compressing certs on ctx2\n");
     }
     if (enable_server_rpk)
+#ifndef OPENSSL_NO_VCAUTHTLS
+        if (!SSL_CTX_set1_server_cert_type(ctx, cert_type_vc, sizeof(cert_type_vc))) {
+            BIO_printf(bio_s_out, "Error setting server certificate types\n");
+            goto end;
+        }
+#else
         if (!SSL_CTX_set1_server_cert_type(ctx, cert_type_rpk, sizeof(cert_type_rpk))) {
             BIO_printf(bio_s_out, "Error setting server certificate types\n");
             goto end;
         }
+#endif
     if (enable_client_rpk)
+#ifndef OPENSSL_NO_VCAUTHTLS
+        if (!SSL_CTX_set1_client_cert_type(ctx, cert_type_vc, sizeof(cert_type_vc))) {
+            BIO_printf(bio_s_out, "Error setting server certificate types\n");
+            goto end;
+        }
+#else
         if (!SSL_CTX_set1_client_cert_type(ctx, cert_type_rpk, sizeof(cert_type_rpk))) {
             BIO_printf(bio_s_out, "Error setting server certificate types\n");
             goto end;
         }
+#endif
 
     if (rev)
         server_cb = rev_body;
@@ -2357,6 +2396,10 @@ int s_server_main(int argc, char *argv[])
     bio_s_msg = NULL;
 #ifdef CHARSET_EBCDIC
     BIO_meth_free(methods_ebcdic);
+#endif
+#ifndef OPENSSL_NO_VCAUTHTLS
+    EVP_PKEY_free(vc);
+    EVP_PKEY_free(did);
 #endif
     return ret;
 }

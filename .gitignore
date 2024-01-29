@@ -249,3 +249,8 @@ doc-nits
 # LSP (Language Server Protocol) support
 .cache/
 compile_commands.json
+
+# vcauthtls stuff
+.cproject
+.project
+.settings/

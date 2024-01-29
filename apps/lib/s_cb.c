@@ -151,6 +151,31 @@ int set_cert_stuff(SSL_CTX *ctx, char *cert_file, char *key_file)
     return 1;
 }
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+int set_vc_did_stuff(SSL_CTX *ctx, EVP_PKEY *vc, EVP_PKEY *did)
+{
+	if (did == NULL || vc == NULL)
+	        return 1;
+	if (SSL_CTX_use_VC(ctx, vc) <= 0) {
+		BIO_printf(bio_err, "error setting certificate\n");
+		ERR_print_errors(bio_err);
+		return 0;
+	}
+	if (SSL_CTX_use_DID(ctx, did) <= 0) {
+		BIO_printf(bio_err, "error setting private key\n");
+		ERR_print_errors(bio_err);
+		return 0;
+	}
+	/*if (!SSL_CTX_check_DID_private_key(ctx)) {
+	        BIO_printf(bio_err,
+	                   "Private key does not match the certificate public key\n");
+	        return 0;
+	    }*/
+
+	return 1;
+}
+#endif
+
 int set_cert_key_stuff(SSL_CTX *ctx, X509 *cert, EVP_PKEY *key,
                        STACK_OF(X509) *chain, int build_chain)
 {

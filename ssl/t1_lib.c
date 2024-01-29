@@ -3718,6 +3718,33 @@ int tls_choose_sigalg(SSL_CONNECTION *s, int fatalerrs)
     s->s3.tmp.sigalg = NULL;
 
     if (SSL_CONNECTION_IS_TLS13(s)) {
+#ifndef OPENSSL_NO_VCAUTHTLS
+        switch (s->ext.server_cert_type) {
+        case TLSEXT_cert_type_x509:
+        case TLSEXT_cert_type_rpk:
+            lu = find_sig_alg(s, NULL, NULL);
+            if (lu == NULL) {
+                if (!fatalerrs)
+                    return 1;
+                SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE,
+                        SSL_R_NO_SUITABLE_SIGNATURE_ALGORITHM);
+                return 0;
+            }
+            break;
+        case TLSEXT_cert_type_vc:
+            lu = &sigalg_lookup_tbl[3];
+            s->s3.tmp.vc = OPENSSL_zalloc(sizeof(VC_PKEY));
+            if (s->s3.tmp.vc == NULL) {
+                SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+    	        return 0;
+            }
+            break;
+        default:
+            SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE,
+                        SSL_R_UNKNOWN_CERTIFICATE_TYPE);
+                return 0;
+        }
+#else
         lu = find_sig_alg(s, NULL, NULL);
         if (lu == NULL) {
             if (!fatalerrs)
@@ -3726,6 +3753,7 @@ int tls_choose_sigalg(SSL_CONNECTION *s, int fatalerrs)
                      SSL_R_NO_SUITABLE_SIGNATURE_ALGORITHM);
             return 0;
         }
+#endif
     } else {
         /* If ciphersuite doesn't require a cert nothing to do */
         if (!(s->s3.tmp.new_cipher->algorithm_auth & SSL_aCERT))
@@ -3842,12 +3870,35 @@ int tls_choose_sigalg(SSL_CONNECTION *s, int fatalerrs)
             }
         }
     }
+#ifndef OPENSSL_NO_VCAUTHTLS
+    switch (s->ext.server_cert_type)
+    {
+    case TLSEXT_cert_type_x509:
+    case TLSEXT_cert_type_rpk:
+        if (sig_idx == -1)
+            sig_idx = lu->sig_idx;
+        s->s3.tmp.cert = &s->cert->pkeys[sig_idx];
+        s->cert->key = s->s3.tmp.cert;
+        s->s3.tmp.sigalg = lu;
+        return 1;
+    case TLSEXT_cert_type_vc:
+        s->s3.tmp.vc->vc = s->vc->vc;
+        s->s3.tmp.vc->did = s->vc->did;
+        s->s3.tmp.sigalg = lu;
+        return 1;
+    default:
+        SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE,
+                        SSL_R_UNKNOWN_CERTIFICATE_TYPE);
+                return 0;
+    }
+#else
     if (sig_idx == -1)
         sig_idx = lu->sig_idx;
     s->s3.tmp.cert = &s->cert->pkeys[sig_idx];
     s->cert->key = s->s3.tmp.cert;
     s->s3.tmp.sigalg = lu;
     return 1;
+#endif
 }
 
 int SSL_CTX_set_tlsext_max_fragment_length(SSL_CTX *ctx, uint8_t mode)
