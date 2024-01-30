@@ -1,4 +1,8 @@
 /*
+ * Modifications Copyright 2024 Fondazione LINKS.
+ */
+
+/*
  * Copyright 2016-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -16,7 +20,7 @@
 
 /*
  * 2 bytes for packet length, 2 bytes for format version, 2 bytes for
- * protocol version, 2 bytes for group id, 2 bytes for cipher id, 1 byte for
+ * protocol version, 2 bytes for group id, 2 bytes for cipher id, 1 byte forp
  * key_share present flag, 8 bytes for timestamp, 2 bytes for the hashlen,
  * EVP_MAX_MD_SIZE for transcript hash, 1 byte for app cookie length, app cookie
  * length bytes, SHA256_DIGEST_LENGTH bytes for the HMAC of the whole thing.

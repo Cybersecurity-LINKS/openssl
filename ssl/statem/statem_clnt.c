@@ -1,4 +1,8 @@
 /*
+ * Modifications Copyright 2024 Fondazione LINKS.
+ */
+
+/*
  * Copyright 1995-2023 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
@@ -1901,7 +1905,24 @@ MSG_PROCESS_RETURN tls_process_server_vc(SSL_CONNECTION *sc, PACKET *pkt)
     EVP_PKEY_free(sc->session->peer_vc);
     sc->session->peer_vc = peer_vc;
 
-    return MSG_PROCESS_CONTINUE_READING;
+    return MSG_PROCESS_CONTINUE_PROCESSING;
+}
+#endif
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+static WORK_STATE tls_post_process_server_vc(SSL_CONNECTION *sc,
+                                              WORK_STATE wst) 
+{                                              
+/* Save the current hash state for when we receive the CertificateVerify */
+    if (SSL_CONNECTION_IS_TLS13(sc)
+            && !ssl_handshake_hash(sc, sc->cert_verify_hash,
+                                   sizeof(sc->cert_verify_hash),
+                                   &sc->cert_verify_hash_len)) {
+        /* SSLfatal() already called */
+        return WORK_ERROR;
+    }
+
+    return WORK_FINISHED_CONTINUE;
 }
 #endif
 
@@ -2089,6 +2110,11 @@ WORK_STATE tls_post_process_server_certificate(SSL_CONNECTION *s,
     const SSL_CERT_LOOKUP *clu;
     size_t certidx;
     int i;
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if (s->ext.server_cert_type == TLSEXT_cert_type_vc)
+        return tls_post_process_server_vc(s, wst);
+#endif
 
     if (s->ext.server_cert_type == TLSEXT_cert_type_rpk)
         return tls_post_process_server_rpk(s, wst);
