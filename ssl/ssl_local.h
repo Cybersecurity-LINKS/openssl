@@ -814,7 +814,7 @@ typedef struct {
 # define TLS_GROUP_FFDHE_FOR_TLS1_3 (TLS_GROUP_FFDHE|TLS_GROUP_ONLY_FOR_TLS1_3)
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-typedef struct vc_pkey_st VC_PKEY;
+typedef struct ssi_pkey_st SSI_PKEY;
 #endif
 
 struct ssl_ctx_st {
@@ -957,7 +957,7 @@ struct ssl_ctx_st {
     int read_ahead;
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-    VC_PKEY *vc;
+    struct ssi_st *ssi;
 #endif
 
     /* callback that allows applications to peek at protocol messages */
@@ -1370,8 +1370,8 @@ struct ssl_connection_st {
             /* Pointer to certificate we use */
             CERT_PKEY *cert;
 #ifndef OPENSSL_NO_VCAUTHTLS
-            /* Pointer to the VC we use */
-            VC_PKEY *vc;
+            /* Pointer to the SSI we use */
+            SSI_PKEY *ssi;
 #endif
             /*
              * signature algorithms peer reports: e.g. supported signature
@@ -1502,7 +1502,7 @@ struct ssl_connection_st {
     struct cert_st /* CERT */ *cert;
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-    struct vc_pkey_st *vc;
+    struct ssi_st *ssi;
 #endif
 
     /*
@@ -2047,7 +2047,7 @@ struct cert_pkey_st {
 # endif
 };
 #ifndef OPENSSL_NO_VCAUTHTLS
-struct vc_pkey_st {
+struct ssi_pkey_st {
 	EVP_PKEY *vc;
 	EVP_PKEY *did;
 };
@@ -2166,6 +2166,16 @@ typedef struct cert_st {
 # endif
     CRYPTO_REF_COUNT references;             /* >1 only if SSL_copy_session_id is used */
 } CERT;
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+typedef struct ssi_st {
+    SSI_PKEY *key;
+    SSI_PKEY *pkeys;
+    size_t ssl_pkey_num;
+
+    CRYPTO_REF_COUNT references;             /* >1 only if SSL_copy_session_id is used */
+} SSI;
+#endif
 
 # define FP_ICC  (int (*)(const void *,const void *))
 
@@ -2500,6 +2510,10 @@ static ossl_inline int ssl_has_cert(const SSL_CONNECTION *s, int idx)
     if (idx < 0 || idx >= (int)s->ssl_pkey_num)
         return 0;
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+    if (ssl_has_cert_type(s, TLSEXT_cert_type_vc))
+        return s->ssi->pkeys[idx].vc != NULL && s->ssi->pkeys[idx].did != NULL;
+#endif    
     /* If RPK is enabled for this SSL... only require private key */
     if (ssl_has_cert_type(s, TLSEXT_cert_type_rpk))
         return s->cert->pkeys[idx].privatekey != NULL;
@@ -3128,9 +3142,8 @@ long ossl_ctrl_internal(SSL *s, int cmd, long larg, void *parg, int no_quic);
 #endif
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-__owur VC_PKEY *ssl_vc_new(size_t ssl_pkey_num);
-__owur VC_PKEY *ssl_vc_dup(VC_PKEY *vc);
-__owur int ssl_has_vc(const SSL_CONNECTION *s);
+__owur struct ssi_st *ssl_ssi_new(size_t ssl_pkey_num);
+__owur struct ssi_st *ssl_ssi_dup(struct ssi_st *ssi);
 __owur int ssl_setup_didmethods(SSL_CTX *ctx);
 __owur int set_server_didmethods(SSL_CONNECTION *s);
 __owur int process_didmethods(SSL_CONNECTION *s);

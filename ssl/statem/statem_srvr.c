@@ -3933,7 +3933,7 @@ CON_FUNC_RETURN tls_construct_server_certificate(SSL_CONNECTION *s, WPACKET *pkt
 {
     CERT_PKEY *cpk = s->s3.tmp.cert;
 #ifndef OPENSSL_NO_VCAUTHTLS
-    VC_PKEY *vcpk = s->s3.tmp.vc;
+    SSI_PKEY *vcpk = s->s3.tmp.ssi;
 #endif
 
         if (cpk == NULL 

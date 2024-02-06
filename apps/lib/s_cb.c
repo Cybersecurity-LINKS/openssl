@@ -160,12 +160,13 @@ int set_vc_did_stuff(SSL_CTX *ctx, EVP_PKEY *vc, EVP_PKEY *did)
 {
 	if (did == NULL || vc == NULL)
 	        return 1;
-	if (SSL_CTX_use_VC(ctx, vc) <= 0) {
+
+	if (SSL_CTX_use_VC(vc, ctx) <= 0) {
 		BIO_printf(bio_err, "error setting certificate\n");
 		ERR_print_errors(bio_err);
 		return 0;
 	}
-	if (SSL_CTX_use_DID(ctx, did) <= 0) {
+	if (SSL_CTX_use_DID(did, ctx) <= 0) {
 		BIO_printf(bio_err, "error setting private key\n");
 		ERR_print_errors(bio_err);
 		return 0;

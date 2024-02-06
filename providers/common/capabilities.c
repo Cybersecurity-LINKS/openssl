@@ -218,7 +218,6 @@ static int tls_group_capability(OSSL_CALLBACK *cb, void *arg)
         if (!cb(param_group_list[i], arg))
             return 0;
 #endif
-
     return 1;
 }
 

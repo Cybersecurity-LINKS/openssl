@@ -3813,7 +3813,7 @@ CON_FUNC_RETURN tls_construct_client_certificate(SSL_CONNECTION *s,
                                                  WPACKET *pkt)
 {   
 #ifndef OPENSSL_NO_VCAUTHTLS
-    VC_PKEY *vcpk = NULL;
+    SSI_PKEY *vcpk = NULL;
 #endif
     CERT_PKEY *cpk = NULL;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
@@ -3832,7 +3832,7 @@ CON_FUNC_RETURN tls_construct_client_certificate(SSL_CONNECTION *s,
     }
     if (s->s3.tmp.cert_req != 2) {
 #ifndef OPENSSL_NO_VCAUTHTLS
-        vcpk = s->vc;
+        vcpk = s->ssi->key;
 #endif
         cpk = s->cert->key;
     }

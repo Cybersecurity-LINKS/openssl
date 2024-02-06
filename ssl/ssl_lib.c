@@ -808,8 +808,8 @@ SSL *ossl_ssl_connection_new_int(SSL_CTX *ctx, const SSL_METHOD *method)
         goto sslerr;
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-    s->vc = ssl_vc_dup(ctx->vc);
-    if (s->vc == NULL)
+    s->ssi = ssl_ssi_dup(ctx->ssi);
+    if (s->ssi == NULL)
         goto sslerr;
 #endif
 
@@ -3977,11 +3977,13 @@ SSL_CTX *SSL_CTX_new_ex(OSSL_LIB_CTX *libctx, const char *propq,
         goto err;
     }
 
+#ifndef OPENSSL_NO_VCAUTHTLS
     /* initialise did methods */
     if(!ssl_setup_didmethods(ret)) {
         ERR_raise(ERR_LIB_SSL, ERR_R_SSL_LIB);
         goto err;
     }
+#endif
 
     if (!SSL_CTX_set_ciphersuites(ret, OSSL_default_ciphersuites())) {
         ERR_raise(ERR_LIB_SSL, ERR_R_SSL_LIB);
@@ -3994,7 +3996,7 @@ SSL_CTX *SSL_CTX_new_ex(OSSL_LIB_CTX *libctx, const char *propq,
     }
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-    if ((ret->vc = ssl_vc_new(SSL_PKEY_NUM + ret->sigalg_list_len)) == NULL) {
+    if ((ret->ssi = ssl_ssi_new(SSL_PKEY_NUM + ret->sigalg_list_len)) == NULL) {
         ERR_raise(ERR_LIB_SSL, ERR_R_SSL_LIB);
         goto err;
     }

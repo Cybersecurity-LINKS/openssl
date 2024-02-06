@@ -577,7 +577,7 @@ int tls_parse_stoc_server_cert_type(SSL_CONNECTION *s, PACKET *pkt,
 
 #ifndef OPENSSL_NO_VCAUTHTLS
 __owur unsigned long tls_output_vc(SSL_CONNECTION *sc, WPACKET *pkt,
-                                    VC_PKEY *vcpk);
+                                    SSI_PKEY *vcpk);
 __owur MSG_PROCESS_RETURN tls_process_server_vc(SSL_CONNECTION *sc,
                                                  PACKET *pkt);
 __owur MSG_PROCESS_RETURN tls_process_client_vc(SSL_CONNECTION *sc, PACKET *pkt);

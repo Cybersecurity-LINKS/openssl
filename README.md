@@ -1,6 +1,6 @@
 # Purpose  
 
-This is a fork of OpenSSL to enable TLS 1.3 authentication through the use of Verifiable Credentials. The original OpenSSL `README` can be found at [OpenSSL](./README-OPENSSL.md)
+This is a fork of OpenSSL to enable TLS 1.3 authentication through the use of Verifiable Credentials. The original OpenSSL `README` can be found at [README-OPENSSL](./README-OPENSSL.md)
 
 # Architecture
 
@@ -12,11 +12,11 @@ We have added the `vcauthtls` option in the `Configure` file to enable VC authen
 
 # Usage
 
-You can create your Self-Sovereign Identity through the `genpkey` application treating the DID Document as the public part and the VC as the private part of an asymmetric keypair.
+The creation of the Self-Sovereign Identity can be performed through the `genpkey` application treating the DID Document as the public part and the VC as the private part of an asymmetric keypair.
 
     openssl genpkey -algorithm VC -out did-document.pem -outpubkey vc.pem -provider default -provider ssi
 
-To perform a TLS 1.3 handshake with VC authentication you can run locally `s_server` and `s_client` applications with the following options:
+A TLS 1.3 handshake with VC authentication can be performed locally by running the `s_server` and `s_client` applications with the following options:
 
     openssl s_server -accept 44330 -www -cert server-vc.pem -key server-did-document.pem -verify 1 -enable_client_rpk -enable_server_rpk -tls1_3 -provider default -provider ssi
 

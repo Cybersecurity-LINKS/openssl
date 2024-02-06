@@ -331,24 +331,25 @@ CON_FUNC_RETURN tls_construct_cert_verify(SSL_CONNECTION *s, WPACKET *pkt)
     const SIGALG_LOOKUP *lu = s->s3.tmp.sigalg;
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
 
+        if (lu == NULL ||
+#ifndef OPENSSL_NO_VCAUTHTLS 
+            (
+#endif
+                s->s3.tmp.cert == NULL
 #ifndef OPENSSL_NO_VCAUTHTLS
-    if(s->ext.server_cert_type == TLSEXT_cert_type_vc) {
-        if (lu == NULL || s->s3.tmp.vc == NULL) {
+            && s->s3.tmp.ssi == NULL)
+#endif        
+        ) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
             goto err;
         }
-        pkey = s->s3.tmp.vc->did;
-    }
-    else if (s->ext.server_cert_type == TLSEXT_cert_type_rpk || s->ext.server_cert_type == TLSEXT_cert_type_x509) {
-#endif
-        if (lu == NULL || s->s3.tmp.cert == NULL) {
-            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-            goto err;
-        }
-        pkey = s->s3.tmp.cert->privatekey;
+ 
 #ifndef OPENSSL_NO_VCAUTHTLS
-    }
+        if(s->s3.tmp.ssi != NULL)
+            pkey = s->s3.tmp.ssi->did;
+        else
 #endif
+            pkey = s->s3.tmp.cert->privatekey;
 
     if (pkey == NULL || !tls1_lookup_md(sctx, lu, &md)) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
@@ -486,9 +487,9 @@ MSG_PROCESS_RETURN tls_process_cert_verify(SSL_CONNECTION *s, PACKET *pkt)
     }
 
     if (ssl_cert_lookup_by_pkey(pkey, NULL, sctx) == NULL) {
-        /* SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER,
+        SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER,
                  SSL_R_SIGNATURE_FOR_NON_SIGNING_CERTIFICATE);
-        goto err; */
+        goto err;
     }
 
     if (SSL_USE_SIGALGS(s)) {
@@ -1556,7 +1557,7 @@ unsigned long tls_output_rpk(SSL_CONNECTION *sc, WPACKET *pkt, CERT_PKEY *cpk)
 
 #ifndef OPENSSL_NO_VCAUTHTLS
 unsigned long tls_output_vc(SSL_CONNECTION *sc, WPACKET *pkt,
-                                    VC_PKEY *vcpk) {
+                                    SSI_PKEY *vcpk) {
 
     int pdata_len = 0;
     unsigned char *pdata = NULL;
@@ -2152,11 +2153,6 @@ static int is_tls13_capable(const SSL_CONNECTION *s)
 
     if (s->psk_find_session_cb != NULL || s->cert->cert_cb != NULL)
         return 1;
-
-#ifndef OPENSSL_NO_VCAUTHTLS
-    if(ssl_has_vc(s))
-        return 1;
-#endif
 
     /* All provider-based sig algs are required to support at least TLS1.3 */
     for (i = 0; i < s->ssl_pkey_num; i++) {

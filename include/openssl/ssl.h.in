@@ -2688,8 +2688,8 @@ __owur int SSL_CTX_get0_client_cert_type(const SSL_CTX *ctx, unsigned char **t, 
 __owur int SSL_CTX_get0_server_cert_type(const SSL_CTX *s, unsigned char **t, size_t *len);
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-__owur int SSL_CTX_use_VC(SSL_CTX *ctx, EVP_PKEY *vc);
-__owur int SSL_CTX_use_DID(SSL_CTX *ctx, EVP_PKEY *did);
+__owur int SSL_CTX_use_VC(EVP_PKEY *vc, SSL_CTX *ctx);
+__owur int SSL_CTX_use_DID(EVP_PKEY *did, SSL_CTX *ctx);
 #endif
 
 # ifdef  __cplusplus

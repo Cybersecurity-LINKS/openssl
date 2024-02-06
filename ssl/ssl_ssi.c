@@ -28,69 +28,110 @@ static const uint16_t didmethods[] = {
 #endif
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-int SSL_CTX_use_VC(SSL_CTX *ctx, EVP_PKEY *vc) 
+int SSL_CTX_use_VC(EVP_PKEY *vc, SSL_CTX *ctx) 
 {   
-    ctx->vc->vc = vc;
+    size_t i;
+
+    if (ssl_cert_lookup_by_pkey(vc, &i, ctx) == NULL) {
+        ERR_raise(ERR_LIB_SSL, SSL_R_UNKNOWN_CERTIFICATE_TYPE);
+        return 0;
+    }
+
+    ctx->ssi->pkeys[i].vc = vc;
+    ctx->ssi->key = &ctx->ssi->pkeys[i];
     return 1;
 }
 #endif
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-int SSL_CTX_use_DID(SSL_CTX *ctx, EVP_PKEY *did)
-{
-    ctx->vc->did = did;
+int SSL_CTX_use_DID(EVP_PKEY *did, SSL_CTX *ctx)
+{   
+    size_t i;
+
+     if (ssl_cert_lookup_by_pkey(did, &i, ctx) == NULL) {
+        ERR_raise(ERR_LIB_SSL, SSL_R_UNKNOWN_CERTIFICATE_TYPE);
+        return 0;
+    }
+
+    ctx->ssi->pkeys[i].did = did;
+    ctx->ssi->key = &ctx->ssi->pkeys[i];
     return 1;
 }
 #endif
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-VC_PKEY *ssl_vc_new(size_t ssl_pkey_num) {
+struct ssi_st *ssl_ssi_new(size_t ssl_pkey_num) {
 
-    VC_PKEY *ret = NULL;
+    SSI *ret = NULL;
 
     /* Should never happen */
-    /* if (!ossl_assert(ssl_pkey_num >= SSL_PKEY_NUM))
-        return NULL; */
+    if (!ossl_assert(ssl_pkey_num >= SSL_PKEY_NUM))
+        return NULL;
 
     ret = OPENSSL_zalloc(sizeof(*ret));
     if (ret == NULL)
         return NULL;
+
+    ret->ssl_pkey_num = ssl_pkey_num;
+    ret->pkeys = OPENSSL_zalloc(ret->ssl_pkey_num * sizeof(SSI_PKEY));
+    if (ret->pkeys == NULL) {
+        OPENSSL_free(ret);
+        return NULL;
+    }
+
+    ret->key = &(ret->pkeys[SSL_PKEY_RSA]);
+    /* ret->sec_cb = ssl_security_default_callback;
+    ret->sec_level = OPENSSL_TLS_SECURITY_LEVEL;
+    ret->sec_ex = NULL; */
+    if (!CRYPTO_NEW_REF(&ret->references, 1)) {
+        OPENSSL_free(ret->pkeys);
+        OPENSSL_free(ret);
+        return NULL;
+    }
 
     return ret;    
 }
 #endif
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-VC_PKEY *ssl_vc_dup(VC_PKEY *vc)
+struct ssi_st *ssl_ssi_dup(SSI *ssi)
 {
-    VC_PKEY *ret = OPENSSL_zalloc(sizeof(*ret));
-    /* size_t i; */
+    SSI *ret = OPENSSL_zalloc(sizeof(*ret));
+    size_t i;
 
     if (ret == NULL)
         return NULL;
 
-    if(vc->did != NULL) {
-        ret->did = vc->did;
-        EVP_PKEY_up_ref(vc->did);
+    ret->ssl_pkey_num = ssi->ssl_pkey_num;
+    ret->pkeys = OPENSSL_zalloc(ret->ssl_pkey_num * sizeof(SSI_PKEY));
+    if (ret->pkeys == NULL) {
+        OPENSSL_free(ret);
+        return NULL;
     }
 
-    if(vc->vc != NULL) {
-        ret->vc = vc->vc;
-        EVP_PKEY_up_ref(vc->vc);
+    ret->key = &ret->pkeys[ssi->key - ssi->pkeys];
+    if (!CRYPTO_NEW_REF(&ret->references, 1)) {
+        OPENSSL_free(ret->pkeys);
+        OPENSSL_free(ret);
+        return NULL;
+    }
+
+    for (i = 0; i < ret->ssl_pkey_num; i++) {
+        SSI_PKEY *cpk = ssi->pkeys + i;
+        SSI_PKEY *rpk = ret->pkeys + i;
+
+        if(cpk->did != NULL) {
+            rpk->did = cpk->did;
+            EVP_PKEY_up_ref(cpk->did);
+        }
+
+        if(cpk->vc != NULL) {
+            rpk->vc = cpk->vc;
+            EVP_PKEY_up_ref(cpk->vc);
+        }   
     }
 
     return ret;
-}
-#endif
-
-#ifndef OPENSSL_NO_VCAUTHTLS
-/* Returns true if VC and DID are present */
-int ssl_has_vc(const SSL_CONNECTION *s)
-{
-    if (ssl_has_cert_type(s, TLSEXT_cert_type_vc))
-        return s->vc->vc != NULL && s->vc->did != NULL;
-
-    return 0;
 }
 #endif
 
