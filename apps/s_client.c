@@ -3471,6 +3471,25 @@ static void print_stuff(BIO *bio, SSL *s, int full)
             }
         }
 
+#ifndef OPENSSL_NO_VCAUTHTLS
+        /* Only display RPK information if configured */
+        if (SSL_get_negotiated_client_cert_type(s) == TLSEXT_cert_type_vc)
+            BIO_printf(bio, "Client-to-server VC negotiated\n");
+        if (SSL_get_negotiated_server_cert_type(s) == TLSEXT_cert_type_vc) {
+            BIO_printf(bio, "Server-to-client VC negotiated\n");
+            if (enable_server_rpk) {
+                EVP_PKEY *peer_vc = SSL_get0_peer_vc(s);
+
+                if (peer_vc != NULL) {
+                    BIO_printf(bio, "Server VC\n");
+                    EVP_PKEY_print_public(bio, peer_vc, 2, NULL);
+                } else {
+                    BIO_printf(bio, "no peer VC available\n");
+                }
+            }
+        }
+#endif
+
         print_ca_names(bio, s);
 
         ssl_print_sigalgs(bio, s);

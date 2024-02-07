@@ -345,7 +345,7 @@ CON_FUNC_RETURN tls_construct_cert_verify(SSL_CONNECTION *s, WPACKET *pkt)
         }
  
 #ifndef OPENSSL_NO_VCAUTHTLS
-        if(s->s3.tmp.ssi != NULL)
+        if(s->s3.tmp.ssi->did != NULL)
             pkey = s->s3.tmp.ssi->did;
         else
 #endif

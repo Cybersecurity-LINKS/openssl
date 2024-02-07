@@ -60,6 +60,17 @@ int SSL_CTX_use_DID(EVP_PKEY *did, SSL_CTX *ctx)
 #endif
 
 #ifndef OPENSSL_NO_VCAUTHTLS
+EVP_PKEY *SSL_get0_peer_vc(const SSL *s) {
+
+    SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(s);
+
+    if (sc == NULL || sc->session == NULL)
+        return NULL;
+    return sc->session->peer_vc;
+}
+#endif
+
+#ifndef OPENSSL_NO_VCAUTHTLS
 struct ssi_st *ssl_ssi_new(size_t ssl_pkey_num) {
 
     SSI *ret = NULL;

@@ -254,3 +254,5 @@ compile_commands.json
 .cproject
 .project
 .settings/
+server.stronghold*
+test-stuff/

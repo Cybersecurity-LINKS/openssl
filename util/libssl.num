@@ -579,3 +579,4 @@ SSL_get0_group_name                     579	3_2_0	EXIST::FUNCTION:
 SSL_is_stream_local                     580	3_2_0	EXIST::FUNCTION:
 SSL_CTX_use_VC                          ?	3_2_1	EXIST::FUNCTION:VCAUTHTLS
 SSL_CTX_use_DID                         ?	3_2_1	EXIST::FUNCTION:VCAUTHTLS
+SSL_get0_peer_vc                        ?	3_2_1	EXIST::FUNCTION:VCAUTHTLS

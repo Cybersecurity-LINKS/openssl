@@ -2690,6 +2690,7 @@ __owur int SSL_CTX_get0_server_cert_type(const SSL_CTX *s, unsigned char **t, si
 #ifndef OPENSSL_NO_VCAUTHTLS
 __owur int SSL_CTX_use_VC(EVP_PKEY *vc, SSL_CTX *ctx);
 __owur int SSL_CTX_use_DID(EVP_PKEY *did, SSL_CTX *ctx);
+__owur EVP_PKEY *SSL_get0_peer_vc(const SSL *s);
 #endif
 
 # ifdef  __cplusplus
