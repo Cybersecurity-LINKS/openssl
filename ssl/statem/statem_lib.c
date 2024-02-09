@@ -1138,10 +1138,9 @@ int tls_process_vc(SSL_CONNECTION *sc, PACKET *pkt, EVP_PKEY **peer_rpk)
     EVP_PKEY *pkey = NULL;
     int ret = 0;
     RAW_EXTENSION *rawexts = NULL;
-    PACKET extensions;
     PACKET context;
     unsigned long cert_len = 0, spki_len = 0;
-    const unsigned char *spki, *spkistart;
+    const unsigned char *spki;
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(sc);
 
     if (SSL_CONNECTION_IS_TLS13(sc)) {

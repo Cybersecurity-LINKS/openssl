@@ -1644,6 +1644,8 @@ struct ssl_connection_st {
         size_t didmethods_len;
         /* our list */
         uint16_t *didmethods;
+        /* used by the client to know if it actually sent did methods */
+        uint8_t didmethods_sent;
 
         size_t peer_didmethods_len;
          /* peer's list */
@@ -1839,7 +1841,7 @@ struct ssl_connection_st {
      * DID methods shared by client and server: cached because these
      * are used most often.
      */
-    const uint16_t *shared_didmethods;
+    const uint16_t **shared_didmethods;
     size_t shared_didmethodslen;
 #endif
 

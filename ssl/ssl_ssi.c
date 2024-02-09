@@ -178,17 +178,131 @@ err:
 #endif
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-int set_server_didmethods(SSL_CONNECTION *s) {
+static int tls13_shared_didmethods(SSL_CONNECTION *s,
+                                   const uint16_t **shdidmethods,
+                                   const uint16_t *pref, size_t preflen,
+                                   const uint16_t *allow, size_t allowlen) {
+    const uint16_t *ptmp, *atmp;
+    size_t i, j, nmatch = 0;
 
-    /* The server checks if the client sent the did_methods extension and set the 
-    did_methods they have in common */
+    for(i = 0, ptmp = pref; i < preflen; i++, ptmp++) {
+        for (j = 0, atmp = allow; j < allowlen; j++, atmp++) {
+            if (*ptmp == *atmp) {
+                nmatch++;
+                if (shdidmethods)
+                    *shdidmethods++ = ptmp;
+                break;
+            }
+        }        
+    }
+    return nmatch;
+}
+#endif
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+static int tls13_check_shared_didmethods(SSL_CONNECTION *s,
+                                   const uint16_t *pref, size_t preflen,
+                                   const uint16_t *allow, size_t allowlen) {
+    const uint16_t *ptmp, *atmp;
+    size_t i, j;
+
+    for(i = 0, ptmp = pref; i < preflen; i++, ptmp++) {
+            for (j = 0, atmp = allow; j < allowlen; j++, atmp++) {
+                if (*ptmp == *atmp)
+                    break;
+            }
+            if(j == allowlen)
+                return 0;
+    }
 
     return 1;
 }
 #endif
 
 #ifndef OPENSSL_NO_VCAUTHTLS
+static int tls13_set_shared_didmethods(SSL_CONNECTION *s)
+{
+    const uint16_t *pref, *allow;
+    const uint16_t **shdidmethods = NULL;
+    size_t preflen, allowlen;
+    size_t nmatch;
+
+    OPENSSL_free(s->shared_didmethods);
+    s->shared_didmethods = NULL;
+    s->shared_didmethodslen = 0;
+
+    pref = s->ext.peer_didmethods;
+    preflen = s->ext.peer_didmethods_len;
+    allow = s->ext.didmethods;
+    allowlen = s->ext.didmethods_len;
+
+    /* On client side check that each did method sent by the server belong to the client list */
+    if(!s->server)
+        if(!tls13_check_shared_didmethods(s, pref, preflen, allow, allowlen))
+            return 0;
+
+    nmatch = tls13_shared_didmethods(s, NULL, pref, preflen, allow, allowlen);
+    if (nmatch) {
+        if ((shdidmethods = OPENSSL_malloc(nmatch * sizeof(*shdidmethods))) == NULL)
+            return 0;
+        nmatch = tls13_shared_didmethods(s, shdidmethods, pref, preflen, allow, allowlen);
+    } else {
+        shdidmethods = NULL;
+        return 0; /*  Maybe should be omitted */
+    }
+    s->shared_didmethods = shdidmethods;
+    s->shared_didmethodslen = nmatch;
+    return 1;
+}   
+#endif
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+int set_server_didmethods(SSL_CONNECTION *s) {
+
+
+    if(s->ext.client_cert_type != TLSEXT_cert_type_vc || !send_certificate_request(s))
+        return 1;
+
+    /* The server must have a list of did methods to send */
+    if(send_certificate_request(s) && s->ext.didmethods == NULL) {
+        SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE,
+             SSL_R_TLSV13_ALERT_MISSING_EXTENSION);
+        return 0;
+    }
+    /* Some day MUST also be checked that the server's DID belongs to the list sent by the client */
+
+    /* If they both authenticate with VC the server must send a list of 
+    did methods the two have in common. */
+    if(s->ext.server_cert_type == TLSEXT_cert_type_vc)
+            return tls13_set_shared_didmethods(s);
+
+    /* The server will send the full list of did methods */
+    return 1;
+}
+#endif
+
+#ifndef OPENSSL_NO_VCAUTHTLS
 int process_didmethods(SSL_CONNECTION *s) {
+
+    /*  If client certificate type is set to VC the list sent by the server can't be empty */
+    if(s->ext.peer_didmethods == NULL) {
+        SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE,
+             SSL_R_TLSV13_ALERT_MISSING_EXTENSION /* This should be changed to something more appropriate */);
+        return 0;
+    }
+
+    /* If the client sent the did methods extension checks that the list sent by the server 
+    is a subset of its list */
+    if(s->ext.didmethods_sent) {
+        if(!tls13_set_shared_didmethods(s)) {
+            SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE,
+             SSL_R_TLSV13_ALERT_MISSING_EXTENSION /* This should be changed to something more appropriate */);
+            return 0;
+        }
+    }
+
+    /* Otherwise accepts the whole list sent by the server */
+    /* Some day MUST also be checked that the client's DID belongs to the list sent by the server */
 
     return 1;
 }

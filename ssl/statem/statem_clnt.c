@@ -2666,10 +2666,11 @@ MSG_PROCESS_RETURN tls_process_certificate_request(SSL_CONNECTION *s,
             return MSG_PROCESS_ERROR;
         }
 #ifndef OPENSSL_NO_VCAUTHTLS
-        if (!process_didmethods(s)) {
-            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_BAD_LENGTH);
-            return MSG_PROCESS_ERROR;
-        }
+        if(s->ext.client_cert_type == TLSEXT_cert_type_vc)
+            if (!process_didmethods(s)) {
+                SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_BAD_LENGTH);
+                return MSG_PROCESS_ERROR;
+            }
 #endif
     } else {
         PACKET ctypes;

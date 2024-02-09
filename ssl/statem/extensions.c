@@ -339,7 +339,8 @@ static const EXTENSION_DEFINITION ext_defs[] = {
         TLSEXT_TYPE_did_methods,
         SSL_EXT_CLIENT_HELLO | SSL_EXT_TLS1_3_CERTIFICATE_REQUEST
         | SSL_EXT_TLS1_3_ONLY,
-        NULL, tls_parse_ctos_did_methods, tls_parse_ctos_did_methods, tls_construct_stoc_did_methods, tls_construct_ctos_did_methods, NULL
+        NULL, tls_parse_ctos_did_methods, tls_parse_stoc_did_methods, 
+        tls_construct_stoc_did_methods, tls_construct_ctos_did_methods, NULL
     },
 #else
     INVALID_EXTENSION,

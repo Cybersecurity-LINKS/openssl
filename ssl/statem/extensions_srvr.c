@@ -2121,6 +2121,10 @@ int tls_parse_ctos_did_methods(SSL_CONNECTION *sc, PACKET *pkt,
 {   
     PACKET did_methods;
 
+    /* Ignore the extension */
+    if(sc->ext.server_cert_type != TLSEXT_cert_type_vc)
+        return 1;
+
     if(!PACKET_as_length_prefixed_2(pkt, &did_methods)
             || PACKET_remaining(&did_methods) == 0) {
         SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_BAD_EXTENSION);
@@ -2147,6 +2151,7 @@ EXT_RETURN tls_construct_stoc_did_methods (SSL_CONNECTION *sc, WPACKET *pkt,
 {
     const uint16_t *didmethods;
 	size_t didmethodslen;
+    int i;
 
     if(sc->ext.client_cert_type != TLSEXT_cert_type_vc 
         || sc->ext.didmethods == NULL)
@@ -2154,7 +2159,7 @@ EXT_RETURN tls_construct_stoc_did_methods (SSL_CONNECTION *sc, WPACKET *pkt,
 
     if (sc->shared_didmethods != NULL)
 	{
-		didmethods = sc->shared_didmethods;
+		didmethods = *sc->shared_didmethods;
 		didmethodslen = sc->shared_didmethodslen;
 	}
 	else
@@ -2165,9 +2170,19 @@ EXT_RETURN tls_construct_stoc_did_methods (SSL_CONNECTION *sc, WPACKET *pkt,
 
     if(!WPACKET_put_bytes_u16(pkt, TLSEXT_TYPE_did_methods)
             || !WPACKET_start_sub_packet_u16(pkt)
-            /* || !WPACKET_start_sub_packet_u16(pkt) */
-            || !WPACKET_sub_memcpy_u16(pkt, didmethods, didmethodslen*2)
-            /* || !WPACKET_close(pkt) */
+            || !WPACKET_start_sub_packet_u16(pkt)) {
+        SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        return EXT_RETURN_FAIL;
+            }
+
+    for(i = 0; i < didmethodslen; i++) {
+        if(!WPACKET_put_bytes_u16(pkt, didmethods[i])) {
+            SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return EXT_RETURN_FAIL;
+        }
+    }
+
+    if(!WPACKET_close(pkt)
             || !WPACKET_close(pkt)) {
         SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         return EXT_RETURN_FAIL;

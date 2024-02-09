@@ -2145,19 +2145,62 @@ EXT_RETURN tls_construct_ctos_did_methods(SSL_CONNECTION *sc, WPACKET *pkt,
                                                unsigned int context,
                                                X509 *x, size_t chainidx) 
 {
+    int i;
+    sc->ext.didmethods_sent = 0;
+
     if(sc->ext.didmethods == NULL)
         return EXT_RETURN_NOT_SENT;
 
     if(!WPACKET_put_bytes_u16(pkt, TLSEXT_TYPE_did_methods)
             || !WPACKET_start_sub_packet_u16(pkt)
-            /* || !WPACKET_start_sub_packet_u16(pkt) */
-            || !WPACKET_sub_memcpy_u16(pkt, sc->ext.didmethods, sc->ext.didmethods_len*2)
-            || !WPACKET_close(pkt)
-            /* || !WPACKET_close(pkt) */) {
+            || !WPACKET_start_sub_packet_u16(pkt)) {
         SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         return EXT_RETURN_FAIL;
+            }
+            
+    for (i = 0; i < sc->ext.didmethods_len; i++) {
+        if(!WPACKET_put_bytes_u16(pkt, sc->ext.didmethods[i])) {
+            SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return EXT_RETURN_FAIL;
+        }
+    }
+    if (!WPACKET_close(pkt)
+            || !WPACKET_close(pkt)) {
+        SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        return EXT_RETURN_FAIL;
+    }        
+    
+    sc->ext.didmethods_sent = 1;
+    return EXT_RETURN_SENT;
+}
+#endif
+
+#ifndef OPENSSL_NO_VCAUTHTLS
+int tls_parse_stoc_did_methods(SSL_CONNECTION *sc, PACKET *pkt,
+                                    unsigned int context,
+                                    X509 *x, size_t chainidx)
+{   
+    PACKET did_methods;
+
+    /* Ignore the extension */
+    if(sc->ext.client_cert_type != TLSEXT_cert_type_vc)
+        return 1;
+
+    if(!PACKET_as_length_prefixed_2(pkt, &did_methods)
+            || PACKET_remaining(&did_methods) == 0) {
+        SSLfatal(sc, SSL_AD_DECODE_ERROR, SSL_R_BAD_EXTENSION);
+        return 0;
     }
 
-    return EXT_RETURN_SENT;
+    OPENSSL_free(sc->ext.peer_didmethods);
+    sc->ext.peer_didmethods = NULL;
+    sc->ext.peer_didmethods_len = 0;
+    if (!tls1_save_u16(&did_methods, &sc->ext.peer_didmethods, 
+    &sc->ext.peer_didmethods_len)) {
+        SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return 0;
+    }
+
+    return 1;
 }
 #endif

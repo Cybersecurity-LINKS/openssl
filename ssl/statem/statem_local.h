@@ -585,6 +585,9 @@ __owur int tls_process_vc(SSL_CONNECTION *sc, PACKET *pkt, EVP_PKEY **peer_vc);
 __owur EXT_RETURN tls_construct_ctos_did_methods(SSL_CONNECTION *sc, WPACKET *pkt,
                                                unsigned int context,
                                                X509 *x, size_t chainidx);
+__owur int tls_parse_stoc_did_methods(SSL_CONNECTION *sc, PACKET *pkt,
+                                    unsigned int context,
+                                    X509 *x, size_t chainidx);
 __owur int tls_parse_ctos_did_methods(SSL_CONNECTION *sc, PACKET *pkt,
                                     unsigned int context,
                                     X509 *x, size_t chainidx);
