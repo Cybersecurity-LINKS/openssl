@@ -254,5 +254,6 @@ compile_commands.json
 .cproject
 .project
 .settings/
+.vscode/
 server.stronghold*
 test-stuff/
