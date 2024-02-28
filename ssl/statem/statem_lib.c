@@ -331,6 +331,9 @@ CON_FUNC_RETURN tls_construct_cert_verify(SSL_CONNECTION *s, WPACKET *pkt)
     const SIGALG_LOOKUP *lu = s->s3.tmp.sigalg;
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
 
+    struct timeval tv1, tv2;
+	gettimeofday(&tv1, NULL);
+
         if (lu == NULL ||
 #ifndef OPENSSL_NO_VCAUTHTLS 
             (
@@ -448,6 +451,11 @@ CON_FUNC_RETURN tls_construct_cert_verify(SSL_CONNECTION *s, WPACKET *pkt)
         goto err;
     }
 
+    gettimeofday(&tv2, NULL);
+    printf ("Total time construct certificate verify = %f seconds\n\n",
+                         (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+                         (double) (tv2.tv_sec - tv1.tv_sec));
+
     OPENSSL_free(sig);
     EVP_MD_CTX_free(mctx);
     return CON_FUNC_SUCCESS;
@@ -474,6 +482,9 @@ MSG_PROCESS_RETURN tls_process_cert_verify(SSL_CONNECTION *s, PACKET *pkt)
     EVP_MD_CTX *mctx = EVP_MD_CTX_new();
     EVP_PKEY_CTX *pctx = NULL;
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
+
+    struct timeval tv1, tv2;
+	gettimeofday(&tv1, NULL);
 
     if (mctx == NULL) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_EVP_LIB);
@@ -604,6 +615,11 @@ MSG_PROCESS_RETURN tls_process_cert_verify(SSL_CONNECTION *s, PACKET *pkt)
             goto err;
         }
     }
+    gettimeofday(&tv2, NULL);
+
+    printf ("Total time process certificate verify = %f seconds\n\n",
+                         (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+                         (double) (tv2.tv_sec - tv1.tv_sec));
 
     /*
      * In TLSv1.3 on the client side we make sure we prepare the client

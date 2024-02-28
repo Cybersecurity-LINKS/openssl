@@ -3731,8 +3731,17 @@ MSG_PROCESS_RETURN tls_process_client_certificate(SSL_CONNECTION *s,
         s->rlayer.rrlmethod->set_plain_alerts(s->rlayer.rrl, 0);
 
 #ifndef OPENSSL_NO_VCAUTHTLS
-    if(s->ext.client_cert_type == TLSEXT_cert_type_vc)
-        return tls_process_client_vc(s, pkt);
+    if(s->ext.client_cert_type == TLSEXT_cert_type_vc) {
+        struct timeval tv1, tv2;
+        int a;
+	    gettimeofday(&tv1, NULL);
+        a = tls_process_client_vc(s, pkt);
+        gettimeofday(&tv2, NULL);
+        printf ("Total time process client vc = %f seconds\n\n",
+                         (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+                         (double) (tv2.tv_sec - tv1.tv_sec));
+        return a;
+    }
 #endif
 
     if (s->ext.client_cert_type == TLSEXT_cert_type_rpk)
@@ -3743,6 +3752,9 @@ MSG_PROCESS_RETURN tls_process_client_certificate(SSL_CONNECTION *s,
                  SSL_R_UNKNOWN_CERTIFICATE_TYPE);
         goto err;
     }
+
+    struct timeval tv1, tv2;
+	gettimeofday(&tv1, NULL);
 
     if ((sk = sk_X509_new_null()) == NULL) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_CRYPTO_LIB);
@@ -3908,6 +3920,11 @@ MSG_PROCESS_RETURN tls_process_client_certificate(SSL_CONNECTION *s,
 
     ret = MSG_PROCESS_CONTINUE_READING;
 
+    gettimeofday(&tv2, NULL);
+    printf ("Total time process client certificate = %f seconds\n\n",
+                         (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+                         (double) (tv2.tv_sec - tv1.tv_sec));
+
  err:
     X509_free(x);
     OSSL_STACK_OF_X509_free(sk);
@@ -3953,13 +3970,19 @@ CON_FUNC_RETURN tls_construct_server_certificate(SSL_CONNECTION *s, WPACKET *pkt
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         return CON_FUNC_ERROR;
     }
+    struct timeval tv1, tv2;
     switch (s->ext.server_cert_type) {
 #ifndef OPENSSL_NO_VCAUTHTLS 
     case TLSEXT_cert_type_vc:
+	    gettimeofday(&tv1, NULL);
         if (!tls_output_vc(s, pkt, vcpk)) {
             /* SSLfatal() already called */
             return 0;
         }
+        gettimeofday(&tv2, NULL);
+        printf ("Total time construct server vc = %f seconds\n\n",
+                             (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+                             (double) (tv2.tv_sec - tv1.tv_sec));
         break;
 #endif
     case TLSEXT_cert_type_rpk:
@@ -3969,10 +3992,15 @@ CON_FUNC_RETURN tls_construct_server_certificate(SSL_CONNECTION *s, WPACKET *pkt
         }
         break;
     case TLSEXT_cert_type_x509:
+	    gettimeofday(&tv1, NULL);
         if (!ssl3_output_cert_chain(s, pkt, cpk, 0)) {
             /* SSLfatal() already called */
             return 0;
         }
+        gettimeofday(&tv2, NULL);
+        printf ("Total time construct server cert = %f seconds\n\n",
+                             (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+                             (double) (tv2.tv_sec - tv1.tv_sec));
         break;
     default:
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
