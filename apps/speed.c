@@ -2061,7 +2061,18 @@ int speed_main(int argc, char **argv)
         EVP_SIGNATURE *s = sk_EVP_SIGNATURE_value(sig_stack, idx);
         const char *sig_name = EVP_SIGNATURE_get0_name(s);
 
-        if (strcmp(sig_name, "RSA") == 0) {
+        if (strcmp(sig_name, "ECDSA") == 0) {
+            if (sigs_algs_len + ECDSA_NUM >= MAX_SIG_NUM) {
+                BIO_printf(bio_err,
+                           "Too many signatures registered. Change MAX_SIG_NUM.\n");
+                goto end;
+            }
+            for (i = 0; i < ECDSA_NUM; i++) {
+                sigs_doit[sigs_algs_len] = 1;
+                sigs_algname[sigs_algs_len++] = OPENSSL_strdup(ecdsa_choices[i].name);
+            }
+        }
+        /* else if (strcmp(sig_name, "RSA") == 0) {
             if (sigs_algs_len + OSSL_NELEM(rsa_choices) >= MAX_SIG_NUM) {
                 BIO_printf(bio_err,
                            "Too many signatures registered. Change MAX_SIG_NUM.\n");
@@ -2071,8 +2082,8 @@ int speed_main(int argc, char **argv)
                 sigs_doit[sigs_algs_len] = 1;
                 sigs_algname[sigs_algs_len++] = OPENSSL_strdup(rsa_choices[i].name);
             }
-        }
-        else if (strcmp(sig_name, "DSA") == 0) {
+        } */
+        /* else if (strcmp(sig_name, "DSA") == 0) {
             if (sigs_algs_len + DSA_NUM >= MAX_SIG_NUM) {
                 BIO_printf(bio_err,
                            "Too many signatures registered. Change MAX_SIG_NUM.\n");
@@ -2082,11 +2093,14 @@ int speed_main(int argc, char **argv)
                 sigs_doit[sigs_algs_len] = 1;
                 sigs_algname[sigs_algs_len++] = OPENSSL_strdup(dsa_choices[i].name);
             }
-        }
+        } */
         /* skipping these algs as tested elsewhere - and b/o setup is a pain */
-        else if (strcmp(sig_name, "ED25519") &&
+        else if (
+                strcmp(sig_name, "RSA") &&
+                strcmp(sig_name, "DSA") && 
+                strcmp(sig_name, "ED25519") &&
                  strcmp(sig_name, "ED448") &&
-                 strcmp(sig_name, "ECDSA") &&
+                 /* strcmp(sig_name, "ECDSA") && */
                  strcmp(sig_name, "HMAC") &&
                  strcmp(sig_name, "SIPHASH") &&
                  strcmp(sig_name, "POLY1305") &&
@@ -3902,6 +3916,7 @@ skip_hmac:
             unsigned int bits;
             OSSL_PARAM params[] = { OSSL_PARAM_END, OSSL_PARAM_END };
             int use_params = 0;
+            int k = 0;
 
             /* only sign little data to avoid measuring digest performance */
             memset(md, 0, SHA256_DIGEST_LENGTH);
@@ -3935,6 +3950,22 @@ skip_hmac:
                     goto sig_err_break;
                 }
             }
+
+            if (strncmp(sig_name, "ecdsa", 5) == 0) {
+                ctx_params = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL);
+                if (ctx_params == NULL
+                    || EVP_PKEY_paramgen_init(ctx_params) <= 0
+                    || EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx_params,
+                                                        ec_curves[k++].nid) <= 0
+                    || EVP_PKEY_paramgen(ctx_params, &pkey_params) <= 0
+                    || (sig_gen_ctx = EVP_PKEY_CTX_new(pkey_params, NULL)) == NULL
+                    || EVP_PKEY_keygen_init(sig_gen_ctx) <= 0) {
+                    BIO_printf(bio_err,
+                               "Error initializing classic keygen ctx for %s.\n",
+                               sig_name);
+                    goto sig_err_break;
+                }
+            }    
 
             if (sig_gen_ctx == NULL)
                 sig_gen_ctx = EVP_PKEY_CTX_new_from_name(app_get0_libctx(),
