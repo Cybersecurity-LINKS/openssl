@@ -3894,6 +3894,7 @@ skip_hmac:
         }
     }
 
+    int t = 0;
     for (testnum = 0; testnum < sigs_algs_len; testnum++) {
         int sig_checks = 1;
         const char *sig_name = sigs_algname[testnum];
@@ -3916,7 +3917,6 @@ skip_hmac:
             unsigned int bits;
             OSSL_PARAM params[] = { OSSL_PARAM_END, OSSL_PARAM_END };
             int use_params = 0;
-            int k = 0;
 
             /* only sign little data to avoid measuring digest performance */
             memset(md, 0, SHA256_DIGEST_LENGTH);
@@ -3956,7 +3956,7 @@ skip_hmac:
                 if (ctx_params == NULL
                     || EVP_PKEY_paramgen_init(ctx_params) <= 0
                     || EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx_params,
-                                                        ec_curves[k++].nid) <= 0
+                                                        ec_curves[t++].nid) <= 0
                     || EVP_PKEY_paramgen(ctx_params, &pkey_params) <= 0
                     || (sig_gen_ctx = EVP_PKEY_CTX_new(pkey_params, NULL)) == NULL
                     || EVP_PKEY_keygen_init(sig_gen_ctx) <= 0) {
