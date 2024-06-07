@@ -332,7 +332,7 @@ CON_FUNC_RETURN tls_construct_cert_verify(SSL_CONNECTION *s, WPACKET *pkt)
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
 
     struct timeval tv1, tv2;
-	gettimeofday(&tv1, NULL);
+    gettimeofday(&tv1, NULL);
 
         if (lu == NULL ||
 #ifndef OPENSSL_NO_VCAUTHTLS 

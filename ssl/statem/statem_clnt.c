@@ -2012,9 +2012,18 @@ MSG_PROCESS_RETURN tls_process_server_certificate(SSL_CONNECTION *s,
     unsigned int context = 0;
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
 
+    struct timeval tv1, tv2;
+
 #ifndef OPENSSL_NO_VCAUTHTLS
-    if (s->ext.server_cert_type == TLSEXT_cert_type_vc)
-        return tls_process_server_vc(s, pkt);
+    if (s->ext.server_cert_type == TLSEXT_cert_type_vc) {
+        gettimeofday(&tv1, NULL);
+        int a = tls_process_server_vc(s, pkt);
+        gettimeofday(&tv2, NULL);
+        printf ("Total time process server vc = %f seconds\n\n",
+                             (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+                             (double) (tv2.tv_sec - tv1.tv_sec));
+        return a;
+    }
 #endif
     if (s->ext.server_cert_type == TLSEXT_cert_type_rpk)
         return tls_process_server_rpk(s, pkt);
@@ -2119,6 +2128,9 @@ WORK_STATE tls_post_process_server_certificate(SSL_CONNECTION *s,
     if (s->ext.server_cert_type == TLSEXT_cert_type_rpk)
         return tls_post_process_server_rpk(s, wst);
 
+    struct timeval tv1, tv2;    
+    gettimeofday(&tv1, NULL);
+
     if (s->rwstate == SSL_RETRY_VERIFY)
         s->rwstate = SSL_NOTHING;
     i = ssl_verify_cert_chain(s, s->session->peer_chain);
@@ -2193,6 +2205,11 @@ WORK_STATE tls_post_process_server_certificate(SSL_CONNECTION *s,
         /* SSLfatal() already called */;
         return WORK_ERROR;
     }
+
+    gettimeofday(&tv2, NULL);
+    printf ("Total time process server cert = %f seconds\n\n",
+                             (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+                             (double) (tv2.tv_sec - tv1.tv_sec));
     return WORK_FINISHED_CONTINUE;
 }
 
@@ -3818,7 +3835,7 @@ CON_FUNC_RETURN tls_construct_client_certificate(SSL_CONNECTION *s,
 #endif
     CERT_PKEY *cpk = NULL;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
-
+    
     if (SSL_CONNECTION_IS_TLS13(s)) {
         if (s->pha_context == NULL) {
             /* no context available, add 0-length context */
@@ -3837,13 +3854,19 @@ CON_FUNC_RETURN tls_construct_client_certificate(SSL_CONNECTION *s,
 #endif
         cpk = s->cert->key;
     }
+    struct timeval tv1, tv2;
     switch (s->ext.client_cert_type) {
 #ifndef OPENSSL_NO_VCAUTHTLS
     case TLSEXT_cert_type_vc:
+        gettimeofday(&tv1, NULL);
         if (!tls_output_vc(s, pkt, vcpk)) {
             /* SSLfatal() already called */
             return CON_FUNC_ERROR;
         }
+        gettimeofday(&tv2, NULL);
+        printf ("Total time construct client vc = %f seconds\n\n",
+                             (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+                             (double) (tv2.tv_sec - tv1.tv_sec));
         break;
 #endif
     case TLSEXT_cert_type_rpk:
@@ -3853,10 +3876,15 @@ CON_FUNC_RETURN tls_construct_client_certificate(SSL_CONNECTION *s,
         }
         break;
     case TLSEXT_cert_type_x509:
+        gettimeofday(&tv1, NULL);
         if (!ssl3_output_cert_chain(s, pkt, cpk, 0)) {
             /* SSLfatal() already called */
             return CON_FUNC_ERROR;
         }
+        gettimeofday(&tv2, NULL);
+        printf ("Total time construct client cert = %f seconds\n\n",
+                             (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+                             (double) (tv2.tv_sec - tv1.tv_sec));
         break;
     default:
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
