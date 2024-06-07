@@ -2011,9 +2011,8 @@ MSG_PROCESS_RETURN tls_process_server_certificate(SSL_CONNECTION *s,
     size_t chainidx;
     unsigned int context = 0;
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
-
+    
     struct timeval tv1, tv2;
-
 #ifndef OPENSSL_NO_VCAUTHTLS
     if (s->ext.server_cert_type == TLSEXT_cert_type_vc) {
         gettimeofday(&tv1, NULL);
@@ -2127,10 +2126,9 @@ WORK_STATE tls_post_process_server_certificate(SSL_CONNECTION *s,
 
     if (s->ext.server_cert_type == TLSEXT_cert_type_rpk)
         return tls_post_process_server_rpk(s, wst);
-
+        
     struct timeval tv1, tv2;    
     gettimeofday(&tv1, NULL);
-
     if (s->rwstate == SSL_RETRY_VERIFY)
         s->rwstate = SSL_NOTHING;
     i = ssl_verify_cert_chain(s, s->session->peer_chain);
@@ -3858,7 +3856,7 @@ CON_FUNC_RETURN tls_construct_client_certificate(SSL_CONNECTION *s,
     switch (s->ext.client_cert_type) {
 #ifndef OPENSSL_NO_VCAUTHTLS
     case TLSEXT_cert_type_vc:
-        gettimeofday(&tv1, NULL);
+    	gettimeofday(&tv1, NULL);
         if (!tls_output_vc(s, pkt, vcpk)) {
             /* SSLfatal() already called */
             return CON_FUNC_ERROR;
